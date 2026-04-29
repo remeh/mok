@@ -9,8 +9,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Model != "qwen3-8b" {
-		t.Errorf("default model = %q, want %q", cfg.Model, "qwen3-8b")
+	if cfg.Model != "qwen3.6-35b-a3b-coder" {
+		t.Errorf("default model = %q, want %q", cfg.Model, "qwen3.6-35b-a3b-coder")
 	}
 	if cfg.Endpoint != "http://localhost:8080/v1" {
 		t.Errorf("default endpoint = %q", cfg.Endpoint)
@@ -24,7 +24,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.KeepRecentTokens != 16384 {
 		t.Errorf("default keep_recent_tokens = %d", cfg.KeepRecentTokens)
 	}
-	if cfg.Temperature != 0.0 {
+	if cfg.Temperature != 0.7 {
 		t.Errorf("default temperature = %f", cfg.Temperature)
 	}
 	if cfg.MaxTokens != 0 {
@@ -37,7 +37,6 @@ func TestLoadConfigFromFile(t *testing.T) {
 
 	yamlContent := `model: "llama-3.1-8b"
 endpoint: "http://192.168.1.1:9000/v1"
-api_key: "test-key-123"
 max_context_tokens: 65536
 compaction_threshold: 0.9
 keep_recent_tokens: 8192
@@ -65,9 +64,6 @@ max_tokens: 4096
 	if cfg.Endpoint != "http://192.168.1.1:9000/v1" {
 		t.Errorf("endpoint = %q", cfg.Endpoint)
 	}
-	if cfg.APIKey != "test-key-123" {
-		t.Errorf("api_key = %q", cfg.APIKey)
-	}
 	if cfg.MaxContextTokens != 65536 {
 		t.Errorf("max_context_tokens = %d", cfg.MaxContextTokens)
 	}
@@ -86,7 +82,6 @@ func TestLoadConfigEnvVars(t *testing.T) {
 	// Set env vars
 	os.Setenv("MMOK_MODEL", "env-model")
 	os.Setenv("MMOK_ENDPOINT", "http://env-host:9999/v1")
-	os.Setenv("MMOK_API_KEY", "env-key")
 	os.Setenv("MMOK_MAX_CONTEXT_TOKENS", "32768")
 	os.Setenv("MMOK_KEEP_RECENT_TOKENS", "4096")
 	os.Setenv("MMOK_TEMPERATURE", "0.7")
@@ -94,7 +89,6 @@ func TestLoadConfigEnvVars(t *testing.T) {
 	t.Cleanup(func() {
 		os.Unsetenv("MMOK_MODEL")
 		os.Unsetenv("MMOK_ENDPOINT")
-		os.Unsetenv("MMOK_API_KEY")
 		os.Unsetenv("MMOK_MAX_CONTEXT_TOKENS")
 		os.Unsetenv("MMOK_KEEP_RECENT_TOKENS")
 		os.Unsetenv("MMOK_TEMPERATURE")
@@ -116,9 +110,6 @@ func TestLoadConfigEnvVars(t *testing.T) {
 	}
 	if cfg.Endpoint != "http://env-host:9999/v1" {
 		t.Errorf("endpoint = %q", cfg.Endpoint)
-	}
-	if cfg.APIKey != "env-key" {
-		t.Errorf("api_key = %q", cfg.APIKey)
 	}
 	if cfg.MaxContextTokens != 32768 {
 		t.Errorf("max_context_tokens = %d", cfg.MaxContextTokens)
@@ -208,7 +199,7 @@ func TestLoadConfigNoFile(t *testing.T) {
 	}
 
 	// Should fall back to defaults
-	if cfg.Model != "qwen3-8b" {
+	if cfg.Model != "qwen3.6-35b-a3b-coder" {
 		t.Errorf("model = %q, want default", cfg.Model)
 	}
 }
@@ -268,7 +259,7 @@ func TestApplyFlagsEmptyStrings(t *testing.T) {
 	applyFlags(cfg, flags)
 
 	// Empty strings should not override
-	if cfg.Model != "qwen3-8b" {
+	if cfg.Model != "qwen3.6-35b-a3b-coder" {
 		t.Errorf("model = %q, want default (empty flag should not override)", cfg.Model)
 	}
 }

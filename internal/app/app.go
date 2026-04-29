@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/user/mmok/internal/tui"
@@ -68,7 +69,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Submit message
 			input := m.Screen.GetInputArea().Value()
 			if input != "" {
-				m.submitMessage(input)
+				if quitCmd := m.submitMessage(input); quitCmd != nil {
+					return m, quitCmd
+				}
 			}
 
 		case tea.KeyUp, tea.KeyDown:
@@ -113,8 +116,33 @@ func (m *AppModel) View() string {
 	return m.Screen.Render()
 }
 
+// handleCommand processes slash commands. Returns a tea.Cmd if a command was handled.
+func (m *AppModel) handleCommand(text string) tea.Cmd {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "/") {
+		return nil
+	}
+
+	cmd := strings.ToLower(strings.TrimSpace(text[1:]))
+	switch cmd {
+	case "exit", "quit":
+		m.quitting = true
+		return tea.Quit
+	default:
+		return nil
+	}
+}
+
 // submitMessage adds a user message and starts a (future) agent response.
-func (m *AppModel) submitMessage(text string) {
+// Returns a tea.Cmd if a command needs to be executed (e.g., tea.Quit).
+func (m *AppModel) submitMessage(text string) tea.Cmd {
+	// Check for slash commands
+	if quitCmd := m.handleCommand(text); quitCmd != nil {
+		m.Screen.GetInputArea().SetValue("")
+		m.Screen.GetInputArea().PushHistory()
+		return quitCmd
+	}
+
 	// Add user message
 	userMsg := types.NewMessage(types.MsgUser, text)
 	m.Messages = append(m.Messages, userMsg)
@@ -126,6 +154,7 @@ func (m *AppModel) submitMessage(text string) {
 	assistantMsg := types.NewMessage(types.MsgAssistant, fmt.Sprintf("(echo) %s", text))
 	m.Messages = append(m.Messages, assistantMsg)
 	m.Screen.GetMessageView().ScrollToBottom()
+	return nil
 }
 
 // Run starts the bubbletea program.

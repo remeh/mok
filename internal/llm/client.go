@@ -91,9 +91,6 @@ func (c *Client) Chat(messages []ChatMsg, handler StreamHandler) (string, error)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	if c.config.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	}
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {

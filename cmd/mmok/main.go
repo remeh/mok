@@ -27,7 +27,6 @@ func main() {
 	timeout := flag.Int("t", 0, "Timeout in seconds for prompt mode (0=no limit)")
 	model := flag.String("model", "", "LLM model name")
 	endpoint := flag.String("endpoint", "", "API endpoint URL")
-	apiKey := flag.String("api-key", "", "API key")
 	maxContext := flag.Int("max-context-tokens", 0, "Max context tokens")
 	temperature := flag.Float64("temperature", 0, "Sampling temperature")
 	maxTokens := flag.Int("max-tokens", 0, "Max response tokens")
@@ -43,7 +42,6 @@ func main() {
 	flags := map[string]string{
 		"model":              *model,
 		"endpoint":           *endpoint,
-		"api-key":            *apiKey,
 		"max-context-tokens": fmt.Sprintf("%d", *maxContext),
 		"temperature":        fmt.Sprintf("%f", *temperature),
 		"max-tokens":         fmt.Sprintf("%d", *maxTokens),

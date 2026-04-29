@@ -76,7 +76,6 @@ func loadFromEnv(cfg *Config) error {
 	type envConfig struct {
 		Model              string `env:"MODEL" envDefault:""`
 		Endpoint           string `env:"ENDPOINT" envDefault:""`
-		APIKey             string `env:"API_KEY" envDefault:""`
 		MaxContextTokens   int    `env:"MAX_CONTEXT_TOKENS" envDefault:"0"`
 		CompactionThreshold float64 `env:"COMPACTION_THRESHOLD" envDefault:"0"`
 		KeepRecentTokens   int    `env:"KEEP_RECENT_TOKENS" envDefault:"0"`
@@ -100,9 +99,6 @@ func loadFromEnv(cfg *Config) error {
 	}
 	if v, ok := envMap["ENDPOINT"]; ok && v != "" {
 		cfg.Endpoint = v
-	}
-	if v, ok := envMap["API_KEY"]; ok && v != "" {
-		cfg.APIKey = v
 	}
 	if v, ok := envMap["MAX_CONTEXT_TOKENS"]; ok && v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -141,9 +137,6 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	if v, ok := flags["endpoint"]; ok && v != "" {
 		cfg.Endpoint = v
 	}
-	if v, ok := flags["api-key"]; ok && v != "" {
-		cfg.APIKey = v
-	}
 	if v, ok := flags["max-context-tokens"]; ok && v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.MaxContextTokens = n
@@ -168,9 +161,6 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.Endpoint != "" {
 		dst.Endpoint = src.Endpoint
-	}
-	if src.APIKey != "" {
-		dst.APIKey = src.APIKey
 	}
 	if src.MaxContextTokens > 0 {
 		dst.MaxContextTokens = src.MaxContextTokens

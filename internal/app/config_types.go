@@ -4,7 +4,6 @@ package app
 type Config struct {
 	Model               string  `yaml:"model"`
 	Endpoint            string  `yaml:"endpoint"`
-	APIKey              string  `yaml:"api_key"`
 	MaxContextTokens    int     `yaml:"max_context_tokens"`
 	CompactionThreshold float64 `yaml:"compaction_threshold"`
 	KeepRecentTokens    int     `yaml:"keep_recent_tokens"`
@@ -15,13 +14,12 @@ type Config struct {
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
-		Model:               "qwen3-8b",
+		Model:               "qwen3.6-35b-a3b-coder",
 		Endpoint:            "http://localhost:8080/v1",
-		APIKey:              "",
 		MaxContextTokens:    131072,
 		CompactionThreshold: 0.8,
 		KeepRecentTokens:    16384,
-		Temperature:         0.0,
+		Temperature:         0.7,
 		MaxTokens:           0,
 	}
 }

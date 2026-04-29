@@ -332,53 +332,6 @@ func TestChatAPIError(t *testing.T) {
 	}
 }
 
-func TestChatWithAPIKey(t *testing.T) {
-	var authHeader string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader = r.Header.Get("Authorization")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("data: [DONE]\n"))
-	}))
-	defer server.Close()
-
-	cfg := &app.Config{
-		Model:    "test-model",
-		Endpoint: server.URL,
-		APIKey:   "secret-key-123",
-	}
-	client := New(cfg)
-
-	_, _ = client.Chat([]ChatMsg{{Role: "user", Content: "test"}}, nil)
-
-	expected := "Bearer secret-key-123"
-	if authHeader != expected {
-		t.Errorf("Authorization = %q, want %q", authHeader, expected)
-	}
-}
-
-func TestChatWithoutAPIKey(t *testing.T) {
-	var authHeader string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader = r.Header.Get("Authorization")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("data: [DONE]\n"))
-	}))
-	defer server.Close()
-
-	cfg := &app.Config{
-		Model:    "test-model",
-		Endpoint: server.URL,
-		APIKey:   "",
-	}
-	client := New(cfg)
-
-	_, _ = client.Chat([]ChatMsg{{Role: "user", Content: "test"}}, nil)
-
-	if authHeader != "" {
-		t.Errorf("Authorization = %q, want empty (no API key set)", authHeader)
-	}
-}
-
 func TestParseStreamMultipleChoices(t *testing.T) {
 	// Multiple choices in a single chunk
 	resp := ChatResponse{

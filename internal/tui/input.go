@@ -156,6 +156,14 @@ func (i *InputArea) Render() string {
 		availableWidth = 10
 	}
 
+	// Clamp cursorPos to valid range (can drift out of sync e.g. after SetValue)
+	if i.cursorPos > len(i.value) {
+		i.cursorPos = len(i.value)
+	}
+	if i.cursorPos < 0 {
+		i.cursorPos = 0
+	}
+
 	// Split value into before/after cursor
 	before := i.value[:i.cursorPos]
 	after := i.value[i.cursorPos:]
@@ -175,8 +183,7 @@ func (i *InputArea) Render() string {
 	cursorChar := "▌"
 	cursorStyle := i.theme.InputPrefix.Foreground(lipgloss.Color("144"))
 
-	text := before + after
-	inputLine := prefix + " " + text + " " + cursorStyle.Render(cursorChar)
+	inputLine := prefix + " " + before + cursorStyle.Render(cursorChar) + after
 
 	// Pad to width
 	renderedWidth := lipgloss.Width(inputLine)
