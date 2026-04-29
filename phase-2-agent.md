@@ -61,10 +61,10 @@ type StreamEvent struct {
 }
 
 type PartialTC struct {
-    Index int
-    ID    string
-    Name  string
-    Args  string // Accumulated JSON arguments (may be partial)
+    Index   *int   // nil if backend omitted it (some backends drop it after first chunk)
+    ID      string
+    Name    string
+    RawArgs string // Accumulated raw JSON string — do NOT parse mid-stream
 }
 
 type Usage struct {
@@ -75,12 +75,11 @@ type Usage struct {
 
 // Client talks to OpenAI-compatible endpoints
 type Client struct {
-    BaseURL   string
-    APIKey    string
+    BaseURL    string
     HTTPClient *http.Client
 }
 
-func NewClient(baseURL, apiKey string) *Client
+func NewClient(baseURL string) *Client
 
 // Stream sends a chat completion and returns a channel of events.
 // The channel is closed when streaming completes.
@@ -113,6 +112,100 @@ Key behaviors:
 5. Parse final usage from last chunk
 6. Emit all events to channel in real-time
 7. Close channel on completion or error
+
+### Tool Call Accumulation
+
+Tool calls from different model families behave differently through OpenAI-compatible endpoints. The accumulator must handle these variations:
+
+**Qwen (2.5 / 3)** — baseline
+- Streams `index`, `id`, `name` in first chunk, then incremental `arguments` in subsequent chunks
+- Well-behaved, matches OpenAI spec
+
+**Gemma 2+** — quirks
+- May emit the entire tool call in a single chunk (no incremental args)
+- May omit `index` in subsequent chunks for the same tool call
+- Can produce malformed mid-stream JSON (split mid-escape, mid-string)
+- No-arg tools may omit the `arguments` field entirely
+
+**gpt-oss** — expected to follow spec faithfully
+
+**Accumulator rules:**
+
+1. **Match by `index` first, fall back to `id`**: If a chunk's `tool_calls[i].index` is absent but `id` is present, match against an in-progress tool call by `id`. This handles backends that drop `index` after the first chunk.
+
+2. **Accumulate raw strings only**: `PartialTC.RawArgs` is a raw string concatenation. Never try to parse it as JSON mid-stream — Gemma can produce invalid intermediate JSON. Parse only at `done` time.
+
+3. **Fill in `id`/`name` late**: If a chunk provides `id` or `name` but the current block doesn't have them yet, fill them in. Some backends split these across chunks.
+
+4. **Default missing `arguments` to `""`**: When a tool call has no parameters, the `arguments` field may be absent entirely. Treat this as empty string; the schema validation step below will resolve it to `{}`.
+
+### JSON Repair at Completion
+
+When the stream ends and tool call arguments are complete, parse through a three-layer fallback:
+
+```go
+package llm
+
+// ParseToolArgs parses accumulated raw JSON arguments with repair.
+// Returns the parsed object, or nil if all parsing strategies fail.
+// On failure, the raw string is still available for error reporting.
+func ParseToolArgs(raw string) (any, error) {
+    // Layer 1: try direct parse
+    var obj any
+    if err := json.Unmarshal([]byte(raw), &obj); err == nil {
+        return obj, nil
+    }
+    // Layer 2: repair common malformations, then parse
+    repaired := RepairJSON(raw)
+    if err := json.Unmarshal([]byte(repaired), &obj); err == nil {
+        return obj, nil
+    }
+    // Layer 3: close unclosed strings/braces, then parse
+    closed := CloseJSON(raw)
+    if err := json.Unmarshal([]byte(closed), &obj); err == nil {
+        return obj, nil
+    }
+    return nil, fmt.Errorf("failed to parse tool arguments: %s", raw)
+}
+
+// RepairJSON fixes common JSON malformations from LLM output:
+// - Escapes raw control characters inside strings
+// - Doubles backslashes before invalid escape characters
+func RepairJSON(raw string) string
+
+// CloseJSON closes unclosed strings, arrays, and objects:
+//   {"key": "val  →  {"key": "val"}
+//   ["a", "b"     →  ["a", "b"]
+func CloseJSON(raw string) string
+```
+
+### Schema Validation at Completion
+
+After parsing, validate arguments against the tool's declared schema. This catches model hallucinations (extra fields, wrong types, missing required keys).
+
+```go
+package tools
+
+// ToolDefinition is a tool available to the agent.
+type ToolDefinition struct {
+    Name        string             `json:"name"`
+    Description string             `json:"description"`
+    Parameters  map[string]any     `json:"parameters"` // JSON Schema object
+    Executor    func(args any) (string, error)
+}
+
+// ValidateArgs validates parsed arguments against the tool's JSON Schema.
+// Returns the validated (and potentially coerced) arguments.
+// On failure, returns the raw parsed object with a warning — do NOT fail the turn.
+func (t *ToolDefinition) ValidateArgs(args any) (any, error)
+```
+
+Coercion rules (match what the model likely intended):
+- String `"42"` → number `42` when schema says `number`/`integer`
+- String `"true"` → boolean `true` when schema says `boolean`
+- Missing optional fields → omit (don't inject defaults)
+
+If validation fails after coercion, log a warning and pass the raw parsed object through. The tool executor can handle malformed input (it will return an error tool result, which the model can retry).
 
 ### Token Estimation
 
@@ -246,7 +339,7 @@ Run(userMessage):
         emit EventMessageStart
 
         var assistantText strings.Builder
-        var toolCalls map[int]*PartialTC
+        var toolCalls map[string]*PartialTC  // keyed by ID (not index)
 
         for event := range eventChan:
             switch event.Type:
@@ -255,15 +348,35 @@ Run(userMessage):
                 emit EventTextDelta{event.Text}
             case "tool_call":
                 tc = accumulateToolCall(toolCalls, event.ToolCall)
-                emit EventToolCallUpdate{tc.ID, tc.Args}
+                    // match by index if present, else by id
+                    // concatenate raw args string — do NOT parse
+                    // fill in id/name if late
+                emit EventToolCallUpdate{tc.ID, tc.RawArgs}
             case "done":
                 emit EventMessageEnd{event.Usage}
                 if event.Stop == "tool_calls":
-                    // Execute tool calls
-                    results = executeToolCalls(toolCalls)
-                    for result in results:
+                    // Parse + validate + execute tool calls
+                    results := make([]ToolResult, 0)
+                    for id, tc := range toolCalls:
+                        emit EventToolCallEnd{tc.ID, tc.Name, tc.RawArgs}
+
+                        // Parse accumulated args (three-layer repair)
+                        args, err := llm.ParseToolArgs(tc.RawArgs)
+                        if err != nil:
+                            args = nil  // pass through raw, executor will error
+
+                        // Validate against tool schema (with coercion)
+                        tool := tools.Find(tc.Name)
+                        if tool != nil:
+                            args, _ = tool.ValidateArgs(args)
+
+                        // Execute
+                        result, err := tool.Executor(args)
+                        isError := (err != nil)
                         append tool_result to history
-                        emit EventToolResult{result}
+                        emit EventToolResult{tc.ID, tc.Name, result, isError}
+                        results = append(results, toolResult)
+
                     continue loop  // Loop back for next LLM call
                 else:
                     // No tool calls, turn complete
@@ -307,12 +420,16 @@ Working directory: {CWD}`
 
 1. [ ] Implement `internal/llm/client.go`: HTTP client with SSE streaming
 2. [ ] Implement `internal/llm/stream.go`: SSE parser, event channel
-3. [ ] Implement `internal/llm/tokenizer.go`: Token estimation
-4. [ ] Implement `internal/agent/message.go`: Message types
-5. [ ] Implement `internal/agent/events.go`: Event types
-6. [ ] Implement `internal/agent/prompt.go`: System prompt builder
-7. [ ] Implement `internal/agent/context.go`: Context window tracking
-8. [ ] Implement `internal/agent/loop.go`: Agent loop (stream → tools → repeat)
-9. [ ] Implement `internal/agent/agent.go`: Agent facade
-10. [ ] Wire agent into TUI app (connect events to UI updates)
-11. [ ] Test: Send a message, see streaming response, verify token tracking
+3. [ ] Implement `internal/llm/accumulator.go`: Tool call accumulator (index/id matching, raw string concat)
+4. [ ] Implement `internal/llm/json_repair.go`: JSON repair (control chars, invalid escapes, close unclosed)
+5. [ ] Implement `internal/llm/tokenizer.go`: Token estimation
+6. [ ] Implement `internal/tools/registry.go`: Tool registry, JSON Schema validation with coercion
+7. [ ] Implement `internal/agent/message.go`: Message types
+8. [ ] Implement `internal/agent/events.go`: Event types
+9. [ ] Implement `internal/agent/prompt.go`: System prompt builder
+10. [ ] Implement `internal/agent/context.go`: Context window tracking
+11. [ ] Implement `internal/agent/loop.go`: Agent loop (stream → tools → repeat)
+12. [ ] Implement `internal/agent/agent.go`: Agent facade
+13. [ ] Wire agent into TUI app (connect events to UI updates)
+14. [ ] Test: Send a message, see streaming response, verify token tracking
+15. [ ] Test: Tool call with Qwen (incremental args), Gemma (single-chunk args), missing args
