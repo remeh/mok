@@ -1,0 +1,8 @@
+model: "gemma4-e4b"
+endpoint: "http://localhost:8000/v1"
+api_key: ""
+max_context_tokens: 131072
+compaction_threshold: 0.8
+keep_recent_tokens: 16384
+temperature: 0.7
+max_tokens: 0
