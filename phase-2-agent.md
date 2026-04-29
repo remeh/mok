@@ -25,7 +25,7 @@ package llm
 type ChatRequest struct {
     Model       string
     Messages    []Message
-    Tools       []ToolDefinition  // OpenAI function calling format
+    Tools       []ToolSpec  // use llm.ToolSpec, not tools.ToolDefinition (avoids import cycle)
     Temperature float32
     MaxTokens   int
 }
@@ -73,6 +73,20 @@ type Usage struct {
     TotalTokens      int `json:"total_tokens"`
 }
 
+// ToolSpec is the wire format for a tool definition sent to the API.
+// Lives in the llm package to avoid an import cycle with the tools package.
+// tools.ToolDefinition → llm.ToolSpec conversion happens at call site.
+type ToolSpec struct {
+    Type     string       `json:"type"` // always "function"
+    Function ToolFunction `json:"function"`
+}
+
+type ToolFunction struct {
+    Name        string         `json:"name"`
+    Description string         `json:"description"`
+    Parameters  map[string]any `json:"parameters"` // JSON Schema object
+}
+
 // Client talks to OpenAI-compatible endpoints
 type Client struct {
     BaseURL    string
@@ -83,6 +97,8 @@ func NewClient(baseURL string) *Client
 
 // Stream sends a chat completion and returns a channel of events.
 // The channel is closed when streaming completes.
+// The HTTP request is created with http.NewRequestWithContext so that
+// cancelling ctx aborts the in-flight request immediately.
 func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEvent, error)
 ```
 
@@ -120,6 +136,7 @@ Tool calls from different model families behave differently through OpenAI-compa
 **Qwen (2.5 / 3)** — baseline
 - Streams `index`, `id`, `name` in first chunk, then incremental `arguments` in subsequent chunks
 - Well-behaved, matches OpenAI spec
+- Emits thinking via `reasoning_content` field in the delta (not `<think>` tags in `content`) — see "Thinking Token Handling" below
 
 **Gemma 2+** — quirks
 - May emit the entire tool call in a single chunk (no incremental args)
@@ -128,6 +145,10 @@ Tool calls from different model families behave differently through OpenAI-compa
 - No-arg tools may omit the `arguments` field entirely
 
 **gpt-oss** — expected to follow spec faithfully
+
+**Model quirk flag**: Add an optional `model_quirks` field to `app.Config` (YAML: `model_quirks: ["no_thinking"]`) so per-model workarounds can be toggled without code changes. Currently anticipated values:
+- `no_thinking` — suppress `<think>` rendering even if model emits it (for models that produce spurious tags)
+- `single_chunk_tools` — skip incremental accumulation, treat each tool call chunk as complete (Gemma fallback)
 
 **Accumulator rules:**
 
@@ -139,6 +160,40 @@ Tool calls from different model families behave differently through OpenAI-compa
 
 4. **Default missing `arguments` to `""`**: When a tool call has no parameters, the `arguments` field may be absent entirely. Treat this as empty string; the schema validation step below will resolve it to `{}`.
 
+### Thinking Token Handling
+
+Both Qwen 3.x and Gemma 4 surface reasoning traces via a `reasoning_content` field in the SSE delta — llama-server translates each model's native thinking format (Qwen's `<think>` tags, Gemma's internal markers) into this unified field. No tag parsing is needed.
+
+Example delta:
+```
+{"choices":[{"delta":{"reasoning_content":"let me think..."}}]}
+{"choices":[{"delta":{"reasoning_content":null,"content":"The answer is 4"}}]}
+```
+
+Rules:
+- **`reasoning_content` present and non-empty** → emit `EventThinkingDelta`, accumulate into `thinkingText` builder. Never append to LLM history.
+- **`content` present and non-empty** → emit `EventTextDelta`, accumulate into `assistantText` builder. Append to history.
+- The two fields are mutually exclusive within a single chunk in practice, but handle both being non-nil defensively.
+- When `reasoning_content` transitions to `null` and `content` starts, thinking is complete.
+
+```go
+// Add to StreamEvent:
+type StreamEvent struct {
+    Type          string     // "text" | "thinking" | "tool_call" | "done" | "error"
+    Text          string     // Text delta (content field)
+    ThinkingDelta string     // Thinking delta (reasoning_content field)
+    ToolCall      *PartialTC
+    Usage         *Usage
+    Stop          string
+    Err           error
+}
+
+// Add to agent events:
+type EventThinkingDelta struct {
+    Text string
+}
+```
+
 ### JSON Repair at Completion
 
 When the stream ends and tool call arguments are complete, parse through a three-layer fallback:
@@ -149,21 +204,20 @@ package llm
 // ParseToolArgs parses accumulated raw JSON arguments with repair.
 // Returns the parsed object, or nil if all parsing strategies fail.
 // On failure, the raw string is still available for error reporting.
-func ParseToolArgs(raw string) (any, error) {
+func ParseToolArgs(raw string) (json.RawMessage, error) {
     // Layer 1: try direct parse
-    var obj any
-    if err := json.Unmarshal([]byte(raw), &obj); err == nil {
-        return obj, nil
+    if json.Valid([]byte(raw)) {
+        return json.RawMessage(raw), nil
     }
-    // Layer 2: repair common malformations, then parse
+    // Layer 2: repair common malformations, then validate
     repaired := RepairJSON(raw)
-    if err := json.Unmarshal([]byte(repaired), &obj); err == nil {
-        return obj, nil
+    if json.Valid([]byte(repaired)) {
+        return json.RawMessage(repaired), nil
     }
-    // Layer 3: close unclosed strings/braces, then parse
+    // Layer 3: close unclosed strings/braces, then validate
     closed := CloseJSON(raw)
-    if err := json.Unmarshal([]byte(closed), &obj); err == nil {
-        return obj, nil
+    if json.Valid([]byte(closed)) {
+        return json.RawMessage(closed), nil
     }
     return nil, fmt.Errorf("failed to parse tool arguments: %s", raw)
 }
@@ -181,23 +235,16 @@ func CloseJSON(raw string) string
 
 ### Schema Validation at Completion
 
-After parsing, validate arguments against the tool's declared schema. This catches model hallucinations (extra fields, wrong types, missing required keys).
+After repair, validate and coerce arguments against the tool's declared schema. This catches model hallucinations (extra fields, wrong types, missing required keys).
 
 ```go
 package tools
 
-// ToolDefinition is a tool available to the agent.
-type ToolDefinition struct {
-    Name        string             `json:"name"`
-    Description string             `json:"description"`
-    Parameters  map[string]any     `json:"parameters"` // JSON Schema object
-    Executor    func(args any) (string, error)
-}
-
-// ValidateArgs validates parsed arguments against the tool's JSON Schema.
-// Returns the validated (and potentially coerced) arguments.
-// On failure, returns the raw parsed object with a warning — do NOT fail the turn.
-func (t *ToolDefinition) ValidateArgs(args any) (any, error)
+// ValidateAndCoerce validates args against schema with type coercion.
+// Returns corrected args on success, or the original args on failure (never blocks the turn).
+// Validation failures are logged as warnings — the tool executor will return an error
+// result that the model can retry.
+func ValidateAndCoerce(schema map[string]any, args json.RawMessage) json.RawMessage
 ```
 
 Coercion rules (match what the model likely intended):
@@ -205,7 +252,11 @@ Coercion rules (match what the model likely intended):
 - String `"true"` → boolean `true` when schema says `boolean`
 - Missing optional fields → omit (don't inject defaults)
 
-If validation fails after coercion, log a warning and pass the raw parsed object through. The tool executor can handle malformed input (it will return an error tool result, which the model can retry).
+**Type layout across packages** (no import cycles):
+- `tools.ToolDefinition` — flat domain type: `{Name, Description, Parameters map[string]any}`. No `Type` field, no `Function` nesting, no `Executor` field.
+- `tools.Tool` — interface: `Definition() ToolDefinition` + `Execute(json.RawMessage) (string, error)`
+- `llm.ToolSpec` — nested wire type sent to API: `{Type:"function", Function:{Name, Description, Parameters}}`
+- Conversion `ToolDefinition → ToolSpec` happens in the `agent` package. Neither `llm` nor `tools` imports the other.
 
 ### Token Estimation
 
@@ -338,49 +389,71 @@ Run(userMessage):
         eventChan = client.Stream(context, messages, tools)
         emit EventMessageStart
 
-        var assistantText strings.Builder
-        var toolCalls map[string]*PartialTC  // keyed by ID (not index)
+        var assistantText  strings.Builder
+        var thinkingText   strings.Builder
+        // Use both a map (fast lookup by ID) and a slice (preserve insertion order).
+        // Insertion order matters: tool_result messages must follow the assistant's
+        // tool_calls array in exactly the same sequence, or some backends reject the request.
+        var toolCallMap   map[string]*PartialTC  // keyed by ID
+        var toolCallOrder []*PartialTC           // insertion-ordered
 
         for event := range eventChan:
             switch event.Type:
+            case "thinking":
+                // Qwen 3 <think> block — display only, never appended to history
+                thinkingText.WriteString(event.ThinkingDelta)
+                emit EventThinkingDelta{event.ThinkingDelta}
             case "text":
                 assistantText.WriteString(event.Text)
                 emit EventTextDelta{event.Text}
             case "tool_call":
-                tc = accumulateToolCall(toolCalls, event.ToolCall)
+                isNew, tc = accumulateToolCall(toolCallMap, toolCallOrder, event.ToolCall)
                     // match by index if present, else by id
                     // concatenate raw args string — do NOT parse
                     // fill in id/name if late
-                emit EventToolCallUpdate{tc.ID, tc.RawArgs}
+                if isNew:
+                    toolCallOrder = append(toolCallOrder, tc)
+                    emit EventToolCallStart{tc.ID, tc.Name}
+                else:
+                    emit EventToolCallUpdate{tc.ID, tc.RawArgs}
             case "done":
                 emit EventMessageEnd{event.Usage}
                 if event.Stop == "tool_calls":
-                    // Parse + validate + execute tool calls
-                    results := make([]ToolResult, 0)
-                    for id, tc := range toolCalls:
+                    // 1. Append the assistant turn to history first, with the full
+                    //    tool_calls array in insertion order. The tool_result messages
+                    //    that follow must reference the same IDs in the same sequence.
+                    assistantMsg = llm.Message{
+                        Role:      "assistant",
+                        Content:   assistantText.String(),  // may be empty
+                        ToolCalls: toAPIToolCalls(toolCallOrder),
+                    }
+                    append assistantMsg to history
+
+                    // 2. Parse + validate + execute each tool call in order
+                    for _, tc := range toolCallOrder:
                         emit EventToolCallEnd{tc.ID, tc.Name, tc.RawArgs}
 
-                        // Parse accumulated args (three-layer repair)
+                        // Parse accumulated args (three-layer repair) → json.RawMessage
                         args, err := llm.ParseToolArgs(tc.RawArgs)
                         if err != nil:
-                            args = nil  // pass through raw, executor will error
+                            args = json.RawMessage(`{}`)  // executor will return an error result
 
-                        // Validate against tool schema (with coercion)
-                        tool := tools.Find(tc.Name)
+                        // Validate and coerce against tool schema
+                        tool := registry.Get(tc.Name)
                         if tool != nil:
-                            args, _ = tool.ValidateArgs(args)
+                            args = tools.ValidateAndCoerce(tool.Definition().Parameters, args)
 
-                        // Execute
-                        result, err := tool.Executor(args)
+                        // Execute — each tool unmarshals json.RawMessage into its own struct
+                        result, err := tool.Execute(args)
                         isError := (err != nil)
-                        append tool_result to history
+                        // 3. Append each tool result immediately after in matching order
+                        append llm.Message{Role:"tool", ToolCallID:tc.ID, Content:result} to history
                         emit EventToolResult{tc.ID, tc.Name, result, isError}
-                        results = append(results, toolResult)
 
                     continue loop  // Loop back for next LLM call
                 else:
-                    // No tool calls, turn complete
-                    append assistant message to history
+                    // No tool calls — strip thinking from content before saving to history
+                    append llm.Message{Role:"assistant", Content:assistantText.String()} to history
                     break
 
         emit EventTurnEnd
@@ -418,18 +491,19 @@ Working directory: {CWD}`
 
 ### Tasks
 
-1. [ ] Implement `internal/llm/client.go`: HTTP client with SSE streaming
-2. [ ] Implement `internal/llm/stream.go`: SSE parser, event channel
-3. [ ] Implement `internal/llm/accumulator.go`: Tool call accumulator (index/id matching, raw string concat)
+1. [ ] Implement `internal/llm/client.go`: HTTP client with SSE streaming (`http.NewRequestWithContext` for abort support)
+2. [ ] Implement `internal/llm/stream.go`: SSE parser, event channel, `<think>` tag detection and splitting
+3. [ ] Implement `internal/llm/accumulator.go`: Tool call accumulator — map+slice pair for ordered, id/index matching, raw concat
 4. [ ] Implement `internal/llm/json_repair.go`: JSON repair (control chars, invalid escapes, close unclosed)
 5. [ ] Implement `internal/llm/tokenizer.go`: Token estimation
-6. [ ] Implement `internal/tools/registry.go`: Tool registry, JSON Schema validation with coercion
+6. [ ] Implement `internal/tools/tool.go` stub: `Tool` interface + flat `ToolDefinition` (full implementations in phase 3)
 7. [ ] Implement `internal/agent/message.go`: Message types
-8. [ ] Implement `internal/agent/events.go`: Event types
+8. [ ] Implement `internal/agent/events.go`: Event types (including `EventThinkingDelta`)
 9. [ ] Implement `internal/agent/prompt.go`: System prompt builder
 10. [ ] Implement `internal/agent/context.go`: Context window tracking
-11. [ ] Implement `internal/agent/loop.go`: Agent loop (stream → tools → repeat)
+11. [ ] Implement `internal/agent/loop.go`: Agent loop — ordered tool call execution, assistant msg before tool results, strip thinking from history
 12. [ ] Implement `internal/agent/agent.go`: Agent facade
-13. [ ] Wire agent into TUI app (connect events to UI updates)
+13. [ ] Wire agent into TUI app (connect events to UI updates, render thinking blocks collapsed)
 14. [ ] Test: Send a message, see streaming response, verify token tracking
-15. [ ] Test: Tool call with Qwen (incremental args), Gemma (single-chunk args), missing args
+15. [ ] Test: Tool call with Qwen 3 (incremental args + thinking tokens), Gemma (single-chunk args), no-arg tools
+16. [ ] Test: Parallel tool calls — verify tool_result order matches tool_calls array order in history

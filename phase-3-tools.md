@@ -14,28 +14,17 @@ package tools
 
 // Tool is a callable tool the agent can use.
 type Tool interface {
-    // Definition returns the tool definition in OpenAI function calling format.
     Definition() ToolDefinition
+    Execute(args json.RawMessage) (string, error)
 }
 
-// ToolDefinition describes a tool for the LLM.
+// ToolDefinition is the flat domain description of a tool.
+// It is NOT the wire format sent to the API — the agent package converts it
+// to llm.ToolSpec when building a ChatRequest.
 type ToolDefinition struct {
-    Type     string                 `json:"type"` // "function"
-    Function FunctionDefinition     `json:"function"`
-}
-
-type FunctionDefinition struct {
     Name        string                 `json:"name"`
     Description string                 `json:"description"`
     Parameters  map[string]interface{} `json:"parameters"` // JSON Schema object
-    Strict      bool                   `json:"strict,omitempty"`
-}
-
-// ToolExecutor executes a tool call.
-type ToolExecutor interface {
-    // Execute runs the tool with the given arguments.
-    // Returns (result string, error).
-    Execute(args json.RawMessage) (string, error)
 }
 ```
 
@@ -77,100 +66,32 @@ type Registry struct {
 func NewRegistry() *Registry
 func (r *Registry) Register(tool Tool)
 func (r *Registry) Get(name string) (Tool, bool)
-func (r *Registry) List() []ToolDefinition  // For sending to LLM
+// List returns definitions for all registered tools.
+// The agent package converts these to []llm.ToolSpec before sending to the API.
+func (r *Registry) List() []ToolDefinition
 func (r *Registry) Execute(name string, args json.RawMessage) (string, error)
 ```
 
-## Streaming Tool Call Parser
+## Streaming Tool Call Accumulation
 
-During streaming, tool call arguments arrive as incremental JSON patches:
-
-```
-Chunk 1: {"name":"read","arguments":"{\"p"}
-Chunk 2: {"name":"read","arguments":"ath\":\""}
-Chunk 3: {"name":"read","arguments":"internal/"}
-Chunk 4: {"name":"read","arguments":"tools/"}
-Chunk 5: {"name":"read","arguments":"edit.\"}
-Chunk 6: {"name":"read","arguments":"go\"}"}
-```
-
-The parser must:
-1. Accumulate arguments per tool call index
-2. Attempt to parse as JSON on each update (for real-time display)
-3. Handle incomplete JSON gracefully (use partial-json parsing)
-4. Validate against schema only when the call is complete
-
-```go
-package tools
-
-// Parser handles streaming tool call parsing
-type Parser struct {
-    calls map[int]*AccumulatedCall
-}
-
-type AccumulatedCall struct {
-    ID        string
-    Name      string
-    Args      string        // Accumulated JSON string
-    Parsed    map[string]interface{} // Best-effort parsed JSON
-}
-
-func (p *Parser) Update(index int, id, name, argsDelta string) *AccumulatedCall
-func (p *Parser) Finalize() map[int]*AccumulatedCall
-func (p *Parser) Get(index int) *AccumulatedCall
-```
-
-### Partial JSON Parsing
-
-For displaying partial tool calls during streaming, use a fallback parser:
-
-```go
-func parsePartialJSON(s string) map[string]interface{} {
-    // Try standard JSON parse first
-    var obj map[string]interface{}
-    if err := json.Unmarshal([]byte(s), &obj); err == nil {
-        return obj
-    }
-    // Fallback: try to complete the JSON
-    // - Close unclosed strings
-    // - Close unclosed objects/arrays
-    // - Remove trailing commas
-    completed := completeJSON(s)
-    if err := json.Unmarshal([]byte(completed), &obj); err == nil {
-        return obj
-    }
-    return nil
-}
-
-func completeJSON(s string) string {
-    // Heuristic JSON completion:
-    // 1. Close any open string literals
-    // 2. Close any open { with }
-    // 3. Close any open [ with ]
-    // 4. Remove trailing commas before closing brackets
-}
-```
+Accumulation of incremental tool call arguments during streaming is handled entirely by `internal/llm/accumulator.go` (see phase 2). The `tools` package has no streaming parser — it only receives finalized `json.RawMessage` args when `Execute` is called.
 
 ## JSON Schema Validation
 
-Validate tool arguments against the tool's JSON Schema:
+After the llm package repairs raw args into valid JSON, the tools package validates and coerces them:
 
 ```go
 package tools
 
-// Validator validates arguments against a JSON Schema.
-type Validator struct{}
-
-// Validate checks if args conform to the schema.
-// Returns nil if valid, or a descriptive error.
-func (v *Validator) Validate(schema map[string]interface{}, args map[string]interface{}) error {
-    // Check required fields
-    // Check types
-    // Check additionalProperties
-}
+// ValidateAndCoerce validates args against the tool's JSON Schema with type coercion.
+// Returns corrected args on success, or the original args if validation fails (never blocks the turn).
+// Coercion: string "42" → int 42, string "true" → bool true when schema demands it.
+// Validation failures are logged as warnings — the tool's Execute will return an error
+// result that the model can retry.
+func ValidateAndCoerce(schema map[string]any, args json.RawMessage) json.RawMessage
 ```
 
-Keep validation lightweight — we're not implementing full JSON Schema, just the subset used by tool definitions (type, required, additionalProperties, enum).
+Keep validation lightweight — implement only the subset used by tool definitions: `type`, `required`, `additionalProperties`, `enum`.
 
 ## Built-in Tools
 
@@ -299,14 +220,14 @@ func IsSafePath(resolved, cwd string) bool
 
 ## Tasks
 
-1. [ ] Implement `internal/tools/tool.go`: Tool interface, ToolDefinition
-2. [ ] Implement `internal/tools/registry.go`: Tool registry
-3. [ ] Implement `internal/tools/parser.go`: Streaming tool call parser
-4. [ ] Implement `internal/tools/validator.go`: JSON Schema validation (subset)
-5. [ ] Implement `internal/tools/path_utils.go`: Path resolution
-6. [ ] Implement `internal/tools/read.go`: Read tool with chunked reading
-7. [ ] Implement `internal/tools/write.go`: Write tool
-8. [ ] Implement `internal/tools/edit.go`: Edit tool with diff
-9. [ ] Implement `internal/tools/bash.go`: Bash tool with timeout
-10. [ ] Wire tools into agent loop (tool call → registry lookup → execute)
-11. [ ] Test: Agent calls read/write/edit/bash tools correctly
+1. [ ] Implement `internal/tools/tool.go`: `Tool` interface, flat `ToolDefinition`
+2. [ ] Implement `internal/tools/registry.go`: Tool registry (`Register`, `Get`, `List`, `Execute`)
+3. [ ] Implement `internal/tools/validate.go`: `ValidateAndCoerce` function (type/required/additionalProperties/enum subset)
+4. [ ] Implement `internal/tools/path_utils.go`: Path resolution and safety check
+5. [ ] Implement `internal/tools/read.go`: Read tool with offset/limit/truncation
+6. [ ] Implement `internal/tools/write.go`: Write tool
+7. [ ] Implement `internal/tools/edit.go`: Edit tool with unified diff output
+8. [ ] Implement `internal/tools/bash.go`: Bash tool with timeout and output truncation
+9. [ ] Wire tools into agent loop: `registry.List()` → convert to `[]llm.ToolSpec` in agent package
+10. [ ] Test: Agent calls read/write/edit/bash tools correctly
+11. [ ] Test: `ValidateAndCoerce` handles missing required field (warn + pass through), wrong type (coerce)
