@@ -96,6 +96,70 @@ func TestMessageViewScrollAutoScroll(t *testing.T) {
 	// autoScroll remains true because we're at the top (scrollPos == 0)
 }
 
+func TestMessageViewScrollPageUp(t *testing.T) {
+	v := setupMessageView(t)
+
+	// Add enough messages to fill the view
+	for i := 0; i < 20; i++ {
+		v.AddMessage(types.NewMessage(types.MsgUser, "message"))
+	}
+
+	v.ScrollToBottom()
+	initialPos := v.scrollPos
+
+	v.ScrollPageUp()
+	if v.scrollPos >= initialPos {
+		t.Errorf("scrollPos = %d, want < %d after page up", v.scrollPos, initialPos)
+	}
+	if v.autoScroll {
+		t.Error("autoScroll should be false after page up")
+	}
+}
+
+func TestMessageViewScrollPageUpAtTop(t *testing.T) {
+	v := setupMessageView(t)
+	v.AddMessage(types.NewMessage(types.MsgUser, "hello"))
+
+	v.ScrollPageUp()
+	if v.scrollPos != 0 {
+		t.Errorf("scrollPos = %d, should stay 0", v.scrollPos)
+	}
+}
+
+func TestMessageViewScrollPageDown(t *testing.T) {
+	v := setupMessageView(t)
+
+	// Add enough messages to fill the view
+	for i := 0; i < 20; i++ {
+		v.AddMessage(types.NewMessage(types.MsgUser, "message"))
+	}
+
+	v.ScrollToTop()
+	initialPos := v.scrollPos
+
+	v.ScrollPageDown()
+	if v.scrollPos <= initialPos {
+		t.Errorf("scrollPos = %d, want > %d after page down", v.scrollPos, initialPos)
+	}
+}
+
+func TestMessageViewScrollToTop(t *testing.T) {
+	v := setupMessageView(t)
+
+	for i := 0; i < 20; i++ {
+		v.AddMessage(types.NewMessage(types.MsgUser, "message"))
+	}
+
+	v.ScrollToBottom()
+	v.ScrollToTop()
+	if v.scrollPos != 0 {
+		t.Errorf("scrollPos = %d, want 0 after scroll to top", v.scrollPos)
+	}
+	if v.autoScroll {
+		t.Error("autoScroll should be false after scroll to top")
+	}
+}
+
 func TestMessageViewToolCall(t *testing.T) {
 	v := setupMessageView(t)
 
@@ -115,8 +179,12 @@ func TestMessageViewToolResult(t *testing.T) {
 	v.AddMessage(msg)
 
 	rendered := v.Render()
-	if !strings.Contains(rendered, "tool_result") {
-		t.Errorf("Render should contain tool_result label: %q", rendered)
+	// Collapsed tool results show summary with expand hint
+	if !strings.Contains(rendered, "[read]") {
+		t.Errorf("Render should contain tool name: %q", rendered)
+	}
+	if !strings.Contains(rendered, "ctrl-o to expand") {
+		t.Errorf("Render should contain expand hint: %q", rendered)
 	}
 }
 
@@ -127,8 +195,28 @@ func TestMessageViewToolError(t *testing.T) {
 	v.AddMessage(msg)
 
 	rendered := v.Render()
-	if !strings.Contains(rendered, "tool_error") {
-		t.Errorf("Render should contain tool_error label: %q", rendered)
+	// Collapsed tool errors show error summary
+	if !strings.Contains(rendered, "[edit]") {
+		t.Errorf("Render should contain tool name: %q", rendered)
+	}
+	if !strings.Contains(rendered, "✗") {
+		t.Errorf("Render should contain error indicator: %q", rendered)
+	}
+}
+
+func TestMessageViewToolResultExpanded(t *testing.T) {
+	v := setupMessageView(t)
+
+	msg := types.NewToolResult("read", "file contents here", false)
+	msg.Collapsed = false // Expand it
+	v.AddMessage(msg)
+
+	rendered := v.Render()
+	if !strings.Contains(rendered, "tool_result") {
+		t.Errorf("Render should contain tool_result label: %q", rendered)
+	}
+	if !strings.Contains(rendered, "file contents here") {
+		t.Errorf("Render should contain full content: %q", rendered)
 	}
 }
 

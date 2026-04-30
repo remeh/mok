@@ -77,12 +77,24 @@ func (s *Screen) SetStatusBarState(state StatusBarState) {
 	s.statusBar.SetState(state)
 }
 
+// SetToolName sets the name of the tool being executed.
+func (s *Screen) SetToolName(name string) {
+	s.statusBar.SetToolName(name)
+}
+
+// Tick advances the status bar spinner animation.
+func (s *Screen) Tick() {
+	s.statusBar.Tick()
+}
+
 // SetStreaming sets whether the LLM is streaming.
+// When streaming is false, only reset to idle if not already in an active state
+// (e.g. thinking, tool_call) to avoid clobbering the status during prefill.
 func (s *Screen) SetStreaming(streaming bool) {
 	s.streaming = streaming
 	if streaming {
 		s.statusBar.SetState(StatusStreaming)
-	} else {
+	} else if !s.statusBar.IsActive() {
 		s.statusBar.SetState(StatusIdle)
 	}
 }

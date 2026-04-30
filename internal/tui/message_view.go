@@ -46,7 +46,7 @@ func (v *MessageView) SetDimensions(w, h int) {
 	v.visible = h
 }
 
-// ScrollUp moves the scroll position up.
+// ScrollUp moves the scroll position up by one line.
 func (v *MessageView) ScrollUp() {
 	if v.scrollPos > 0 {
 		v.scrollPos--
@@ -54,12 +54,34 @@ func (v *MessageView) ScrollUp() {
 	}
 }
 
-// ScrollDown moves the scroll position down.
+// ScrollDown moves the scroll position down by one line.
 func (v *MessageView) ScrollDown() {
 	totalLines := v.totalLineCount()
 	if v.scrollPos < totalLines-v.visible {
 		v.scrollPos++
 	}
+}
+
+// ScrollPageUp moves the scroll position up by one page (viewport height).
+func (v *MessageView) ScrollPageUp() {
+	if v.scrollPos == 0 {
+		return
+	}
+	v.scrollPos = max(0, v.scrollPos-v.visible+1)
+	v.autoScroll = false
+}
+
+// ScrollPageDown moves the scroll position down by one page (viewport height).
+func (v *MessageView) ScrollPageDown() {
+	totalLines := v.totalLineCount()
+	maxScroll := max(0, totalLines-v.visible)
+	v.scrollPos = min(v.scrollPos+v.visible-1, maxScroll)
+}
+
+// ScrollToTop scrolls to the top.
+func (v *MessageView) ScrollToTop() {
+	v.scrollPos = 0
+	v.autoScroll = false
 }
 
 // ScrollToBottom scrolls to the bottom.
@@ -88,19 +110,22 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 
 	switch msg.Type {
 	case types.MsgToolCall:
-		// Tool call: "tool_call tool_name(args)" — one line typically
 		content := fmt.Sprintf("%s %s(%s)", v.messageLabel(msg), msg.ToolName, truncate(msg.ToolArgs, 80))
 		wrapped := wordwrap.String(content, v.width-2)
 		lines += len(strings.Split(wrapped, "\n"))
 	case types.MsgToolResult:
-		// Tool result: label + result content
-		content := msg.Content
-		if content != "" {
-			text := v.messageLabel(msg) + " " + content
-			wrapped := wordwrap.String(text, v.width-2)
-			lines += len(strings.Split(wrapped, "\n"))
+		if msg.Collapsed && msg.Summary != "" {
+			// Collapsed: just the summary line
+			lines = 1
 		} else {
-			lines++
+			content := msg.Content
+			if content != "" {
+				text := v.messageLabel(msg) + " " + content
+				wrapped := wordwrap.String(text, v.width-2)
+				lines += len(strings.Split(wrapped, "\n"))
+			} else {
+				lines++
+			}
 		}
 	default:
 		content := msg.Content
@@ -109,7 +134,6 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 			wrapped := wordwrap.String(text, v.width-2)
 			lines += len(strings.Split(wrapped, "\n"))
 		} else {
-			// Empty streaming message: one line for label
 			lines = 1
 		}
 	}
@@ -158,6 +182,9 @@ func (v *MessageView) messageStyle(msg *types.Message) lipgloss.Style {
 	case types.MsgToolResult:
 		if msg.IsError {
 			return v.theme.Error
+		}
+		if msg.Collapsed {
+			return v.theme.ToolResultCollapsed
 		}
 		return v.theme.ToolResult
 	case types.MsgSystem:
@@ -223,6 +250,12 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	case types.MsgToolCall:
 		content = fmt.Sprintf("%s(%s)", msg.ToolName, truncate(msg.ToolArgs, 80))
 	case types.MsgToolResult:
+		if msg.Collapsed && msg.Summary != "" {
+			// Show collapsed summary with expand hint
+			content = fmt.Sprintf("[%s] %s  (ctrl-o to expand all)", msg.ToolName, msg.Summary)
+			lines = append(lines, style.Render("  "+content))
+			return lines
+		}
 		content = msg.Content
 	default:
 		content = msg.Content
@@ -258,5 +291,3 @@ func min(a, b int) int {
 	}
 	return b
 }
-
-

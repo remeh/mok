@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -11,10 +12,11 @@ type StatusBarState string
 
 const (
 	StatusIdle       StatusBarState = "idle"
-	StatusStreaming  StatusBarState = "streaming..."
-	StatusCompacting StatusBarState = "compacting..."
+	StatusStreaming  StatusBarState = "streaming"
+	StatusCompacting StatusBarState = "compacting"
 	StatusError      StatusBarState = "error"
-	StatusThinking   StatusBarState = "thinking..."
+	StatusThinking   StatusBarState = "thinking"
+	StatusToolCall   StatusBarState = "tool_call"
 )
 
 // StatusBar renders the bottom status bar.
@@ -24,15 +26,22 @@ type StatusBar struct {
 	tokenCount     int
 	maxTokens      int
 	state          StatusBarState
+	toolName       string // Name of the tool being executed
 	width          int
+	spinnerFrame   int
+	lastUpdate     time.Time
 }
+
+// Spinner frames for activity indicator
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // NewStatusBar creates a new StatusBar.
 func NewStatusBar(theme Theme) *StatusBar {
 	return &StatusBar{
-		theme:     theme,
-		state:     StatusIdle,
-		maxTokens: 131072,
+		theme:      theme,
+		state:      StatusIdle,
+		maxTokens:  131072,
+		lastUpdate: time.Now(),
 	}
 }
 
@@ -56,11 +65,22 @@ func (s *StatusBar) SetMaxTokens(max int) {
 // SetState sets the status state.
 func (s *StatusBar) SetState(state StatusBarState) {
 	s.state = state
+	s.lastUpdate = time.Now()
+}
+
+// SetToolName sets the name of the tool being executed.
+func (s *StatusBar) SetToolName(name string) {
+	s.toolName = name
 }
 
 // SetWidth sets the bar width.
 func (s *StatusBar) SetWidth(width int) {
 	s.width = width
+}
+
+// Tick advances the spinner animation. Call periodically (e.g., from a tea.Tick cmd).
+func (s *StatusBar) Tick() {
+	s.spinnerFrame = (s.spinnerFrame + 1) % len(spinnerFrames)
 }
 
 // Render returns the styled status bar string.
@@ -82,8 +102,8 @@ func (s *StatusBar) Render() string {
 	}
 	center := s.theme.StatusBar.Render(tokenInfo)
 
-	// Right: status
-	right := s.theme.StatusBar.Render(string(s.state))
+	// Right: status with spinner when active
+	right := s.renderStatus()
 
 	// Combine with spacing
 	totalLen := lipgloss.Width(left) + lipgloss.Width(center) + lipgloss.Width(right) + 4
@@ -103,4 +123,29 @@ func (s *StatusBar) Render() string {
 		s.theme.StatusBar.Render(StringsRepeat(" ", rightPad)))
 }
 
+func (s *StatusBar) renderStatus() string {
+	switch s.state {
+	case StatusIdle:
+		return s.theme.StatusBarIdle.Render("● ready")
+	case StatusError:
+		return s.theme.StatusBarError.Render("✗ error")
+	case StatusToolCall:
+		if s.toolName != "" {
+			return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " executing: " + s.toolName)
+		}
+		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " executing tool...")
+	case StatusThinking:
+		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " thinking...")
+	case StatusStreaming:
+		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " streaming...")
+	case StatusCompacting:
+		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " compacting...")
+	default:
+		return s.theme.StatusBar.Render(string(s.state))
+	}
+}
 
+// IsActive returns true if the status bar should show an active state.
+func (s *StatusBar) IsActive() bool {
+	return s.state != StatusIdle && s.state != StatusError
+}

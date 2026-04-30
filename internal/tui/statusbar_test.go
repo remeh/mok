@@ -85,8 +85,8 @@ func TestStatusBarSetState(t *testing.T) {
 
 	bar.SetState(StatusIdle)
 	rendered = bar.Render()
-	if !strings.Contains(rendered, "idle") {
-		t.Errorf("Render() should contain idle state: %q", rendered)
+	if !strings.Contains(rendered, "ready") {
+		t.Errorf("Render() should contain ready state: %q", rendered)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/user/mmok/internal/agent"
@@ -30,10 +31,11 @@ type AppModel struct {
 	quitting  bool
 
 	// Agent event handling
-	agentRunning bool
-	streamMsg    *types.Message
-	cancel       context.CancelFunc
-	eventChan    chan agentEvent
+	agentRunning  bool
+	streamMsg     *types.Message
+	cancel        context.CancelFunc
+	eventChan     chan agentEvent
+	spinnerTicker tea.Cmd
 }
 
 // NewAppModel creates a new AppModel with the given config.
@@ -47,8 +49,12 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 
 	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
 
-	// Create tool registry (Phase 2B — tools are registered in Phase 3)
+	// Create tool registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
+	toolRegistry.Add(&tools.ReadTool{CWD: cfg.CWD})
+	toolRegistry.Add(&tools.WriteTool{CWD: cfg.CWD})
+	toolRegistry.Add(&tools.EditTool{CWD: cfg.CWD})
+	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
 	agt := agent.NewAgent(client, agent.AgentConfig{
 		Model:       cfg.Model,
@@ -67,7 +73,10 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 
 // Init implements tea.Model.
 func (m *AppModel) Init() tea.Cmd {
-	return tea.WindowSize()
+	return tea.Batch(
+		tea.WindowSize(),
+		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg { return t }),
+	)
 }
 
 // Update implements tea.Model.
@@ -86,6 +95,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.quitting = true
 			return m, tea.Quit
+
+		case tea.KeyCtrlO:
+			// Expand all collapsed tool results
+			m.expandAllToolResults()
+			break
 
 		case tea.KeyEnter:
 			if msg.Alt {
@@ -114,6 +128,24 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Screen.GetInputArea().HandleKey(msg.Type)
 			}
 
+		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyCtrlU, tea.KeyCtrlD:
+			if m.Screen.GetInputArea().Value() == "" {
+				if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyCtrlU {
+					m.Screen.GetMessageView().ScrollPageUp()
+				} else {
+					m.Screen.GetMessageView().ScrollPageDown()
+				}
+			}
+
+		case tea.KeyHome, tea.KeyEnd:
+			if m.Screen.GetInputArea().Value() == "" {
+				if msg.Type == tea.KeyHome {
+					m.Screen.GetMessageView().ScrollToTop()
+				} else {
+					m.Screen.GetMessageView().ScrollToBottom()
+				}
+			}
+
 		default:
 			if m.agentRunning {
 				break
@@ -128,12 +160,25 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.Screen.GetMessageView().ScrollUp()
+		case tea.MouseButtonWheelDown:
+			m.Screen.GetMessageView().ScrollDown()
+		}
+
 	case agentEvent:
 		m.handleAgentEvent(msg.Event)
 		// Keep polling for more events until the turn is done
 		if !msg.Done {
 			return m, m.readAgentEvent
 		}
+
+	case time.Time:
+		// Spinner tick
+		m.Screen.Tick()
+		return m, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg { return t })
 	}
 
 	return m, nil
@@ -149,6 +194,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.streamMsg = types.NewMessage(types.MsgAssistant, "")
 		m.streamMsg.Streaming = true
 		m.Messages = append(m.Messages, m.streamMsg)
+		m.Screen.SetStatusBarState(tui.StatusStreaming)
 
 	case agent.EventTextDelta:
 		if m.streamMsg != nil {
@@ -167,6 +213,8 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		if ev.Usage != nil {
 			m.Screen.SetTokenCount(ev.Usage.TotalTokens)
 		}
+		// Agent is deciding its next action (more LLM calls or turn end)
+		m.Screen.SetStatusBarState(tui.StatusThinking)
 
 	case agent.EventTurnEnd:
 		m.agentRunning = false
@@ -179,6 +227,8 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		// Show tool call start with "executing..."
 		toolCallMsg := types.NewToolCall(ev.Name, ev.RawArgs)
 		m.Messages = append(m.Messages, toolCallMsg)
+		m.Screen.SetStatusBarState(tui.StatusToolCall)
+		m.Screen.SetToolName(ev.Name)
 
 	case agent.EventToolCallUpdate:
 		// Update the last tool call message's args (streaming args)
@@ -202,6 +252,9 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		// Show tool result
 		resultMsg := types.NewToolResult(ev.Name, ev.Result, ev.IsError)
 		m.Messages = append(m.Messages, resultMsg)
+		m.Screen.SetToolName("")
+		// Reset status to thinking since agent will decide next action
+		m.Screen.SetStatusBarState(tui.StatusThinking)
 
 	case agent.EventError:
 		m.agentRunning = false
@@ -218,6 +271,15 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 func (m *AppModel) abortAgent() {
 	if m.cancel != nil {
 		m.cancel()
+	}
+}
+
+// expandAllToolResults expands all collapsed tool result messages.
+func (m *AppModel) expandAllToolResults() {
+	for _, msg := range m.Messages {
+		if msg.Type == types.MsgToolResult && msg.Collapsed {
+			msg.Collapsed = false
+		}
 	}
 }
 
@@ -313,6 +375,7 @@ func Run(cfg *Config) error {
 
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
 		tea.WithOutput(os.Stdout),
 	)
 

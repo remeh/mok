@@ -36,7 +36,17 @@ internal/app/
   app.go                    — bubbletea Model (Update/View), agent event wiring
 internal/llm/
   client.go                 — OpenAI-compatible API client, SSE streaming parser
+  accumulator.go            — Tool call accumulator (map+slice, index/ID matching)
+  json_repair.go            — JSON repair (control chars, invalid escapes, unclosed braces)
   tokenizer.go              — Token estimation + ContextTracker
+internal/tools/
+  tool.go                   — Tool interface + ToolDefinition + Registry
+  validator.go              — ValidateAndCoerce with type coercion
+  path_utils.go             — Path resolution (~, relative, absolute) + safety checks
+  read.go                   — Read tool (offset/limit/truncation, image support)
+  write.go                  — Write tool (auto-create parent dirs)
+  edit.go                   — Edit tool (multi-edit, unified diff output)
+  bash.go                   — Bash tool (timeout, output truncation)
 internal/tui/
   screen.go                 — Composes MessageView + InputArea + StatusBar
   message_view.go           — Scrollable message list with word wrap, thinking indicator
@@ -55,12 +65,13 @@ internal/types/
 - **muesli/reflow** — Word wrapping
 - **gopkg.in/yaml.v3** — Config file parsing
 - **caarlos0/env/v10** — Env struct tags (declared but not actively used)
+- **sergi/go-diff** (v1.4.0) — Unified diff generation for edit tool
 
 ## Configuration
 
 Precedence: defaults → YAML file → env vars → CLI flags.
 
-Supported config keys: `model`, `endpoint`, `bearer_token`, `max_context_tokens`, `compaction_threshold`, `keep_recent_tokens`, `temperature`, `max_tokens`, `model_quirks`.
+Supported config keys: `model`, `endpoint`, `bearer_token`, `cwd`, `max_context_tokens`, `compaction_threshold`, `keep_recent_tokens`, `temperature`, `max_tokens`, `model_quirks`.
 
 Env vars: `MMOK_MODEL`, `MMOK_ENDPOINT`, `MMOK_BEARER_TOKEN`, `MMOK_MAX_CONTEXT_TOKENS`, `MMOK_COMPACTION_THRESHOLD`, `MMOK_KEEP_RECENT_TOKENS`, `MMOK_TEMPERATURE`, `MMOK_MAX_TOKENS`, `MMOK_MODEL_QUIRKS`.
 
@@ -75,30 +86,28 @@ File locations searched: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.
 - Agent loop: builds context (system prompt + history), streams text/thinking separately, collects assistant message, tracks tokens
 - Agent events: `EventTurnStart`, `EventMessageStart`, `EventTextDelta`, `EventThinkingDelta`, `EventMessageEnd`, `EventTurnEnd`, `EventError`
 - TUI message view: scrollable, word wrap, `[thinking]` collapsed indicator, cursor during streaming
+- Tool results: collapsed by default with one-line summary, press `space` to expand/collapse
+- Status bar: spinner animation during activity, granular states (`thinking...`, `streaming...`, `executing: <tool>`, `● ready`, `✗ error`)
 - Abort: Ctrl+C / Esc aborts running agent, then quits
 - Input disabled during agent running
 - Context tracker: `ContextTracker` with `EstimateTokens` for token estimation
 - Config: YAML + env + flags with proper precedence, `bearer_token` and `model_quirks` support
 - System prompt: includes current date and working directory
 - LLM client: OpenAI-compatible SSE streaming, context-aware abort via `http.NewRequestWithContext`, handles `reasoning_content` for thinking tokens
-- Tool call parsing scaffolding in SSE parser (for Phase 2B)
+- Tool call accumulation: map+slice with index-first matching, ID fallback for Gemma quirks
+- JSON repair: three-layer fallback (direct parse → repair control chars/escapes → close unclosed braces)
+- Schema validation: `ValidateAndCoerce` with type coercion (string→number, string→boolean)
+- Built-in tools: read (offset/limit/truncation, images), write (auto-create dirs), edit (multi-edit, unified diff), bash (timeout, output truncation)
+- Tool registry: `Registry` with `Add`/`Get`/`All`/`ToSpecs`, wired into agent loop
 
 ### Not Yet Implemented
 - No conversation history persistence (in-memory only)
 - No context compaction (config fields exist but logic is absent)
-- No tool call execution (parsing scaffolding exists in SSE client)
 - No file attachment / context file support
 
 ## Next Steps
 
 See [PLAN.md](./PLAN.md) for the full phase breakdown.
-
-### Phase 2B — Tool Calls + JSON Repair
-Add tool call accumulation from SSE, JSON repair, schema validation, tool interface/registry,
-and extend the agent loop with tool call → execute → retry. Handle model quirks (Gemma, Qwen).
-
-### Phase 3 — Built-in Tools
-Implement actual tools: bash, read, edit, write.
 
 ### Phase 4 — Compaction
 Implement context compaction with LLM-driven summarization.
