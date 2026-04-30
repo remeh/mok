@@ -9,22 +9,24 @@ import (
 type MessageType string
 
 const (
-	MsgSystem       MessageType = "system"
-	MsgUser         MessageType = "user"
-	MsgAssistant    MessageType = "assistant"
-	MsgToolCall     MessageType = "tool_call"
-	MsgToolResult   MessageType = "tool_result"
+	MsgSystem    MessageType = "system"
+	MsgUser      MessageType = "user"
+	MsgAssistant MessageType = "assistant"
+	MsgToolCall  MessageType = "tool_call"
+	MsgToolResult MessageType = "tool_result"
 )
 
 // Message represents a single conversation entry.
 type Message struct {
-	ID        string
-	Type      MessageType
-	Content   string    // Text content or tool result output
-	ToolName  string    // For tool_call / tool_result
-	ToolArgs  string    // For tool_call: JSON args
-	IsError   bool      // For tool_result
-	Timestamp time.Time
+	ID           string
+	Type         MessageType
+	Content      string
+	ThinkingText string // Collapsed reasoning/thinking output
+	ToolName     string
+	ToolArgs     string
+	IsError      bool
+	Streaming    bool // True while the message is still being streamed
+	Timestamp    time.Time
 }
 
 // NewMessage creates a new Message with a unique ID.

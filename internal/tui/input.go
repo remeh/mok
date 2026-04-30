@@ -27,6 +27,11 @@ func NewInputArea(theme Theme, prompt string) *InputArea {
 	}
 }
 
+// SetFocused sets whether the input area accepts keystrokes.
+func (i *InputArea) SetFocused(focused bool) {
+	i.focused = focused
+}
+
 // SetValue sets the input value.
 func (i *InputArea) SetValue(v string) {
 	i.value = v

@@ -108,15 +108,6 @@ func TestScreenSetStreaming(t *testing.T) {
 	}
 }
 
-func TestScreenSetPartialText(t *testing.T) {
-	screen := setupScreen(t)
-	screen.SetPartialText("partial response...")
-
-	if screen.partialText != "partial response..." {
-		t.Errorf("partialText = %q, want 'partial response...'", screen.partialText)
-	}
-}
-
 func TestScreenRender(t *testing.T) {
 	screen := setupScreen(t)
 	screen.SetDimensions(80, 20)

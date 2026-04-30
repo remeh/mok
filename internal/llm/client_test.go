@@ -1,42 +1,50 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/user/mmok/internal/app"
 )
 
-func TestNew(t *testing.T) {
-	cfg := app.DefaultConfig()
-	client := New(cfg)
+func TestNewClient(t *testing.T) {
+	client := NewClient("http://localhost:8080/v1", "test-token")
 
 	if client == nil {
-		t.Fatal("New returned nil")
+		t.Fatal("NewClient returned nil")
 	}
-	if client.config != cfg {
-		t.Error("config not set")
+	if client.BaseURL != "http://localhost:8080/v1" {
+		t.Errorf("BaseURL = %q, want 'http://localhost:8080/v1'", client.BaseURL)
 	}
-	if client.client == nil {
-		t.Error("http client not set")
+	if client.BearerToken != "test-token" {
+		t.Errorf("BearerToken = %q, want 'test-token'", client.BearerToken)
+	}
+	if client.httpClient == nil {
+		t.Error("httpClient not set")
+	}
+}
+
+func TestNewClientNoToken(t *testing.T) {
+	client := NewClient("http://localhost:8080/v1", "")
+
+	if client.BearerToken != "" {
+		t.Errorf("BearerToken = %q, want ''", client.BearerToken)
 	}
 }
 
 func TestChatRequestMarshal(t *testing.T) {
 	req := ChatRequest{
 		Model:       "test-model",
-		Messages:    []ChatMsg{{Role: "user", Content: "hello"}},
-		Stream:      true,
+		Messages:    []Message{{Role: "user", Content: "hello"}},
 		Temperature: 0.5,
 		MaxTokens:   100,
 	}
 
-	data, err := json.Marshal(req)
+	body := req
+	data, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -49,9 +57,6 @@ func TestChatRequestMarshal(t *testing.T) {
 	if unmarshaled.Model != "test-model" {
 		t.Errorf("model = %q, want 'test-model'", unmarshaled.Model)
 	}
-	if !unmarshaled.Stream {
-		t.Error("stream should be true")
-	}
 	if unmarshaled.Temperature != 0.5 {
 		t.Errorf("temperature = %f, want 0.5", unmarshaled.Temperature)
 	}
@@ -63,8 +68,7 @@ func TestChatRequestMarshal(t *testing.T) {
 	}
 }
 
-func TestParseStream(t *testing.T) {
-	// Simulate a real SSE stream
+func TestStreamText(t *testing.T) {
 	chunks := []struct {
 		role    string
 		content string
@@ -78,12 +82,12 @@ func TestParseStream(t *testing.T) {
 
 	var sb strings.Builder
 	for _, chunk := range chunks {
-		resp := ChatResponse{
-			Choices: []Choice{
-				{
-					Delta: Delta{
-						Role:    chunk.role,
-						Content: chunk.content,
+		resp := map[string]any{
+			"choices": []any{
+				map[string]any{
+					"delta": map[string]any{
+						"role":    chunk.role,
+						"content": chunk.content,
 					},
 				},
 			},
@@ -91,272 +95,261 @@ func TestParseStream(t *testing.T) {
 		data, _ := json.Marshal(resp)
 		sb.WriteString(fmt.Sprintf("data: %s\n", string(data)))
 	}
+	// Usage chunk
+	usageChunk := map[string]any{
+		"usage": map[string]any{
+			"prompt_tokens":     10,
+			"completion_tokens": 5,
+			"total_tokens":      15,
+		},
+	}
+	usageData, _ := json.Marshal(usageChunk)
+	sb.WriteString(fmt.Sprintf("data: %s\n", string(usageData)))
 	sb.WriteString("data: [DONE]\n")
 
-	client := New(app.DefaultConfig())
-	var received []string
-	fullText, err := client.parseStream(strings.NewReader(sb.String()), func(content string) error {
-		received = append(received, content)
-		return nil
-	})
-
-	if err != nil {
-		t.Fatalf("parseStream: %v", err)
-	}
-
-	expected := "Hello world!"
-	if fullText != expected {
-		t.Errorf("fullText = %q, want %q", fullText, expected)
-	}
-
-	// Should have received 4 content chunks (skipping the role-only one)
-	if len(received) != 4 {
-		t.Errorf("received %d chunks, want 4", len(received))
-	}
-}
-
-func TestParseStreamEarlyError(t *testing.T) {
-	chunks := []struct {
-		role    string
-		content string
-	}{
-		{"", "Hello"},
-		{"", " world"},
-	}
-
-	var sb strings.Builder
-	for _, chunk := range chunks {
-		resp := ChatResponse{
-			Choices: []Choice{
-				{Delta: Delta{Content: chunk.content}},
-			},
-		}
-		data, _ := json.Marshal(resp)
-		sb.WriteString(fmt.Sprintf("data: %s\n", string(data)))
-	}
-	sb.WriteString("data: [DONE]\n")
-
-	client := New(app.DefaultConfig())
-	callCount := 0
-	handler := func(content string) error {
-		callCount++
-		if callCount == 2 {
-			return fmt.Errorf("simulated error")
-		}
-		return nil
-	}
-
-	fullText, err := client.parseStream(strings.NewReader(sb.String()), handler)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if fullText != "Hello" {
-		t.Errorf("fullText = %q, want 'Hello' (partial before error)", fullText)
-	}
-}
-
-func TestParseStreamEmpty(t *testing.T) {
-	client := New(app.DefaultConfig())
-	fullText, err := client.parseStream(strings.NewReader(""), nil)
-	if err != nil {
-		t.Fatalf("parseStream: %v", err)
-	}
-	if fullText != "" {
-		t.Errorf("fullText = %q, want empty", fullText)
-	}
-}
-
-func TestParseStreamMalformedChunks(t *testing.T) {
-	// Mix of valid and invalid chunks
-	input := `data: {"choices":[{"delta":{"content":"Hello"}}]}
-data: not-json
-data: {"choices":[{"delta":{"content":" world"}}]}
-data: [DONE]
-`
-	client := New(app.DefaultConfig())
-	fullText, err := client.parseStream(strings.NewReader(input), nil)
-	if err != nil {
-		t.Fatalf("parseStream: %v", err)
-	}
-	if fullText != "Hello world" {
-		t.Errorf("fullText = %q, want 'Hello world'", fullText)
-	}
-}
-
-func TestParseStreamNonDataLines(t *testing.T) {
-	// SSE can have event:, id:, retry:, etc.
-	input := `event: message
-id: 1
-data: {"choices":[{"delta":{"content":"Hello"}}]}
-
-data: [DONE]
-`
-	client := New(app.DefaultConfig())
-	fullText, err := client.parseStream(strings.NewReader(input), nil)
-	if err != nil {
-		t.Fatalf("parseStream: %v", err)
-	}
-	if fullText != "Hello" {
-		t.Errorf("fullText = %q, want 'Hello'", fullText)
-	}
-}
-
-func TestChatURLConstruction(t *testing.T) {
-	tests := []struct {
-		name     string
-		endpoint string
-		want     string
-	}{
-		{
-			name:     "with trailing slash",
-			endpoint: "http://localhost:8080/v1/",
-			want:     "http://localhost:8080/v1/chat/completions",
-		},
-		{
-			name:     "without trailing slash",
-			endpoint: "http://localhost:8080/v1",
-			want:     "http://localhost:8080/v1/chat/completions",
-		},
-		{
-			name:     "already has path",
-			endpoint: "http://localhost:8080/v1/chat/completions",
-			want:     "http://localhost:8080/v1/chat/completions",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &app.Config{
-				Endpoint: tt.endpoint,
-				Model:    "test",
-			}
-			client := New(cfg)
-
-			// Use a test server to capture the URL
-			var capturedURL string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedURL = r.URL.String()
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("data: [DONE]\n"))
-			}))
-			defer server.Close()
-
-			// Override endpoint to point to test server
-			client.config.Endpoint = server.URL
-
-			_, _ = client.Chat([]ChatMsg{{Role: "user", Content: "test"}}, nil)
-
-			if capturedURL != "/chat/completions" {
-				t.Errorf("URL = %q, want '/chat/completions'", capturedURL)
-			}
-		})
-	}
-}
-
-func TestChatWithHandler(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Read request body
-		body, _ := io.ReadAll(r.Body)
-		var req ChatRequest
-		json.Unmarshal(body, &req)
-
-		if req.Model != "test-model" {
-			t.Errorf("model = %q, want 'test-model'", req.Model)
-		}
-		if !req.Stream {
-			t.Error("stream should be true")
-		}
-		if len(req.Messages) != 1 {
-			t.Errorf("messages count = %d, want 1", len(req.Messages))
-		}
-		if req.Messages[0].Role != "user" {
-			t.Errorf("role = %q, want 'user'", req.Messages[0].Role)
-		}
-
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-
-		for _, word := range []string{"Hello", " ", "world"} {
-			resp := ChatResponse{
-				Choices: []Choice{{Delta: Delta{Content: word}}},
-			}
-			data, _ := json.Marshal(resp)
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
-		}
-		fmt.Fprintln(w, "data: [DONE]")
+		fmt.Fprint(w, sb.String())
 	}))
 	defer server.Close()
 
-	cfg := &app.Config{
-		Model:    "test-model",
-		Endpoint: server.URL,
+	client := NewClient(server.URL+"/v1", "")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "hi"}},
 	}
-	client := New(cfg)
+
+	events, err := client.Stream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Stream error: %v", err)
+	}
 
 	var received []string
-	fullText, err := client.Chat([]ChatMsg{{Role: "user", Content: "test"}}, func(content string) error {
-		received = append(received, content)
-		return nil
-	})
+	var gotDone bool
+	for event := range events {
+		switch event.Type {
+		case "text":
+			received = append(received, event.Text)
+		case "done":
+			gotDone = true
+			if event.Usage == nil {
+				t.Error("expected usage in done event")
+			} else {
+				if event.Usage.TotalTokens != 15 {
+					t.Errorf("total_tokens = %d, want 15", event.Usage.TotalTokens)
+				}
+			}
+		}
+	}
 
-	if err != nil {
-		t.Fatalf("Chat: %v", err)
+	if !gotDone {
+		t.Error("expected done event")
 	}
-	if fullText != "Hello world" {
-		t.Errorf("fullText = %q, want 'Hello world'", fullText)
-	}
-	if len(received) != 3 {
-		t.Errorf("received %d chunks, want 3", len(received))
+
+	fullText := strings.Join(received, "")
+	if fullText != "Hello world!" {
+		t.Errorf("full text = %q, want 'Hello world!'", fullText)
 	}
 }
 
-func TestChatAPIError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"model not found"}}`))
-	}))
-	defer server.Close()
+func TestStreamThinking(t *testing.T) {
+	var sb strings.Builder
 
-	cfg := &app.Config{
-		Model:    "test-model",
-		Endpoint: server.URL,
-	}
-	client := New(cfg)
-
-	_, err := client.Chat([]ChatMsg{{Role: "user", Content: "test"}}, nil)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Errorf("error should contain status code: %v", err)
-	}
-}
-
-func TestParseStreamMultipleChoices(t *testing.T) {
-	// Multiple choices in a single chunk
-	resp := ChatResponse{
-		Choices: []Choice{
-			{Delta: Delta{Content: "Hello"}},
-			{Delta: Delta{Content: " world"}},
+	// Thinking chunk
+	thinkChunk := map[string]any{
+		"choices": []any{
+			map[string]any{
+				"delta": map[string]any{
+					"reasoning_content": "let me think...",
+				},
+			},
 		},
 	}
-	data, _ := json.Marshal(resp)
-	input := fmt.Sprintf("data: %s\ndata: [DONE]\n", string(data))
+	data, _ := json.Marshal(thinkChunk)
+	sb.WriteString(fmt.Sprintf("data: %s\n", string(data)))
 
-	client := New(app.DefaultConfig())
-	var received []string
-	fullText, err := client.parseStream(strings.NewReader(input), func(content string) error {
-		received = append(received, content)
-		return nil
-	})
+	// Text chunk
+	textChunk := map[string]any{
+		"choices": []any{
+			map[string]any{
+				"delta": map[string]any{
+					"content": "The answer is 42",
+				},
+			},
+		},
+	}
+	data, _ = json.Marshal(textChunk)
+	sb.WriteString(fmt.Sprintf("data: %s\n", string(data)))
 
+	sb.WriteString("data: [DONE]\n")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, sb.String())
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/v1", "")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "what is 6*7?"}},
+	}
+
+	events, err := client.Stream(context.Background(), req)
 	if err != nil {
-		t.Fatalf("parseStream: %v", err)
+		t.Fatalf("Stream error: %v", err)
 	}
-	if fullText != "Hello world" {
-		t.Errorf("fullText = %q, want 'Hello world'", fullText)
+
+	var thinking, text string
+	for event := range events {
+		switch event.Type {
+		case "thinking":
+			thinking += event.ThinkingDelta
+		case "text":
+			text += event.Text
+		}
 	}
-	if len(received) != 2 {
-		t.Errorf("received %d chunks, want 2", len(received))
+
+	if thinking != "let me think..." {
+		t.Errorf("thinking = %q, want 'let me think...'", thinking)
+	}
+	if text != "The answer is 42" {
+		t.Errorf("text = %q, want 'The answer is 42'", text)
+	}
+}
+
+func TestStreamEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: [DONE]\n")
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/v1", "")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}
+
+	events, err := client.Stream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Stream error: %v", err)
+	}
+
+	// Empty stream should complete without errors
+	for event := range events {
+		if event.Type == "error" {
+			t.Errorf("unexpected error event: %v", event.Err)
+		}
+	}
+}
+
+func TestStreamMalformedChunks(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("data: {invalid json}\n")
+	sb.WriteString("data: {\"choices\":[{\"delta\":{\"content\":\"valid\"}}]}\n")
+	sb.WriteString("data: [DONE]\n")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, sb.String())
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/v1", "")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}
+
+	events, err := client.Stream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Stream error: %v", err)
+	}
+
+	var text string
+	for event := range events {
+		if event.Type == "text" {
+			text += event.Text
+		}
+	}
+
+	if text != "valid" {
+		t.Errorf("text = %q, want 'valid'", text)
+	}
+}
+
+func TestStreamURLConstruction(t *testing.T) {
+	var receivedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: [DONE]\n")
+	}))
+	defer server.Close()
+
+	// Test with trailing slash
+	client := NewClient(server.URL+"/", "")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}
+	events, _ := client.Stream(context.Background(), req)
+	for range events {
+	}
+
+	if receivedPath != "/chat/completions" {
+		t.Errorf("path = %q, want '/chat/completions'", receivedPath)
+	}
+}
+
+func TestStreamBearerToken(t *testing.T) {
+	var gotToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: [DONE]\n")
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "my-secret-token")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}
+	events, _ := client.Stream(context.Background(), req)
+	for range events {
+	}
+
+	if gotToken != "Bearer my-secret-token" {
+		t.Errorf("Authorization = %q, want 'Bearer my-secret-token'", gotToken)
+	}
+}
+
+func TestStreamAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":{"message":"internal error"}}`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	req := &ChatRequest{
+		Model:    "test",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	}
+
+	_, err := client.Stream(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !strings.Contains(err.Error(), "500") {
+			t.Errorf("error = %v, want it to contain '500'", err)
 	}
 }

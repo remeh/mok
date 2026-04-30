@@ -1,26 +1,38 @@
 package app
 
 import (
-	"fmt"
+	"context"
 	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/user/mmok/internal/agent"
+	"github.com/user/mmok/internal/llm"
 	"github.com/user/mmok/internal/tui"
 	"github.com/user/mmok/internal/types"
 )
 
+// agentEvent wraps a single agent event as a tea.Msg.
+type agentEvent struct {
+	Event agent.Event
+	Done  bool // true when the agent turn is complete
+}
+
 // AppModel is the root bubbletea model for the application.
 type AppModel struct {
-	Config      *Config
-	Screen      *tui.Screen
-	Messages    []*types.Message
-	InputBuffer string
-	Streaming   bool
-	PartialText string
-	width       int
-	height      int
-	quitting    bool
+	Config    *Config
+	Screen    *tui.Screen
+	Agent     *agent.Agent
+	Messages  []*types.Message
+	width     int
+	height    int
+	quitting  bool
+
+	// Agent event handling
+	agentRunning bool
+	streamMsg    *types.Message
+	cancel       context.CancelFunc
+	eventChan    chan agentEvent
 }
 
 // NewAppModel creates a new AppModel with the given config.
@@ -32,10 +44,19 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	screen.SetMaxTokens(cfg.MaxContextTokens)
 	screen.SetStatusBarState(tui.StatusIdle)
 
+	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
+	agt := agent.NewAgent(client, agent.AgentConfig{
+		Model:       cfg.Model,
+		Temperature: cfg.Temperature,
+		MaxTokens:   cfg.MaxTokens,
+	})
+
 	return &AppModel{
-		Config:   cfg,
-		Screen:   screen,
-		Messages: make([]*types.Message, 0),
+		Config:    cfg,
+		Screen:    screen,
+		Agent:     agt,
+		Messages:  make([]*types.Message, 0),
+		eventChan: make(chan agentEvent, 128),
 	}, nil
 }
 
@@ -46,8 +67,6 @@ func (m *AppModel) Init() tea.Cmd {
 
 // Update implements tea.Model.
 func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -57,16 +76,21 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
+			if m.agentRunning {
+				m.abortAgent()
+			}
 			m.quitting = true
 			return m, tea.Quit
 
 		case tea.KeyEnter:
 			if msg.Alt {
-				// Alt+Enter: insert newline in input
 				m.Screen.GetInputArea().HandleRune('\n')
 				break
 			}
-			// Submit message
+			if m.agentRunning {
+				m.abortAgent()
+				break
+			}
 			input := m.Screen.GetInputArea().Value()
 			if input != "" {
 				if quitCmd := m.submitMessage(input); quitCmd != nil {
@@ -75,7 +99,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyUp, tea.KeyDown:
-			// Only handle if input is empty (otherwise it's for history)
 			if m.Screen.GetInputArea().Value() == "" {
 				if msg.Type == tea.KeyUp {
 					m.Screen.GetMessageView().ScrollUp()
@@ -87,6 +110,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		default:
+			if m.agentRunning {
+				break
+			}
 			handled := m.Screen.GetInputArea().HandleKey(msg.Type)
 			if !handled && msg.Type == tea.KeyRunes {
 				for _, r := range msg.Runes {
@@ -96,9 +122,80 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Screen.GetInputArea().HandleRune(rune(msg.String()[0]))
 			}
 		}
+
+	case agentEvent:
+		m.handleAgentEvent(msg.Event)
+		// Keep polling for more events until the turn is done
+		if !msg.Done {
+			return m, m.readAgentEvent
+		}
 	}
 
-	return m, cmd
+	return m, nil
+}
+
+// handleAgentEvent processes a single event from the agent loop.
+func (m *AppModel) handleAgentEvent(event agent.Event) {
+	switch ev := event.(type) {
+	case agent.EventTurnStart:
+		m.Screen.SetStatusBarState(tui.StatusThinking)
+
+	case agent.EventMessageStart:
+		m.streamMsg = types.NewMessage(types.MsgAssistant, "")
+		m.streamMsg.Streaming = true
+		m.Messages = append(m.Messages, m.streamMsg)
+
+	case agent.EventTextDelta:
+		if m.streamMsg != nil {
+			m.streamMsg.Content += ev.Text
+		}
+
+	case agent.EventThinkingDelta:
+		if m.streamMsg != nil {
+			m.streamMsg.ThinkingText += ev.Text
+		}
+
+	case agent.EventMessageEnd:
+		if m.streamMsg != nil {
+			m.streamMsg.Streaming = false
+		}
+		if ev.Usage != nil {
+			m.Screen.SetTokenCount(ev.Usage.TotalTokens)
+		}
+
+	case agent.EventTurnEnd:
+		m.agentRunning = false
+		m.streamMsg = nil
+		m.cancel = nil
+		m.Screen.GetInputArea().SetFocused(true)
+		m.Screen.SetStatusBarState(tui.StatusIdle)
+
+	case agent.EventError:
+		m.agentRunning = false
+		m.streamMsg = nil
+		m.cancel = nil
+		m.Screen.GetInputArea().SetFocused(true)
+		m.Screen.SetStatusBarState(tui.StatusError)
+		errMsg := types.NewMessage(types.MsgAssistant, "Error: "+ev.Err.Error())
+		m.Messages = append(m.Messages, errMsg)
+	}
+}
+
+// abortAgent cancels the current agent run.
+func (m *AppModel) abortAgent() {
+	if m.cancel != nil {
+		m.cancel()
+	}
+}
+
+// readAgentEvent is a tea.Cmd that reads the next event from the bridge channel.
+// Blocks until an event arrives or the channel closes.
+func (m *AppModel) readAgentEvent() tea.Msg {
+	event, ok := <-m.eventChan
+	if !ok {
+		return agentEvent{Event: agent.EventTurnEnd{}, Done: true}
+	}
+	return event
 }
 
 // View implements tea.Model.
@@ -107,16 +204,14 @@ func (m *AppModel) View() string {
 		return ""
 	}
 
-	// Update screen with current state
 	m.Screen.SetMessages(m.Messages)
 	m.Screen.SetInputValue(m.Screen.GetInputArea().Value())
-	m.Screen.SetStreaming(m.Streaming)
-	m.Screen.SetPartialText(m.PartialText)
+	m.Screen.SetStreaming(m.streamMsg != nil && m.streamMsg.Streaming)
 
 	return m.Screen.Render()
 }
 
-// handleCommand processes slash commands. Returns a tea.Cmd if a command was handled.
+// handleCommand processes slash commands. Returns a tea.Cmd if handled.
 func (m *AppModel) handleCommand(text string) tea.Cmd {
 	text = strings.TrimSpace(text)
 	if !strings.HasPrefix(text, "/") {
@@ -133,35 +228,54 @@ func (m *AppModel) handleCommand(text string) tea.Cmd {
 	}
 }
 
-// submitMessage adds a user message and starts a (future) agent response.
-// Returns a tea.Cmd if a command needs to be executed (e.g., tea.Quit).
+// submitMessage adds a user message and starts the agent loop.
+// Returns the first polling cmd to kick off the event pipeline.
 func (m *AppModel) submitMessage(text string) tea.Cmd {
-	// Check for slash commands
 	if quitCmd := m.handleCommand(text); quitCmd != nil {
 		m.Screen.GetInputArea().SetValue("")
 		m.Screen.GetInputArea().PushHistory()
 		return quitCmd
 	}
 
-	// Add user message
 	userMsg := types.NewMessage(types.MsgUser, text)
 	m.Messages = append(m.Messages, userMsg)
 	m.Screen.GetInputArea().SetValue("")
 	m.Screen.GetInputArea().PushHistory()
-
-	// For now, echo back (Phase 2 will connect the agent)
-	// This is a placeholder to show the UI working
-	assistantMsg := types.NewMessage(types.MsgAssistant, fmt.Sprintf("(echo) %s", text))
-	m.Messages = append(m.Messages, assistantMsg)
 	m.Screen.GetMessageView().ScrollToBottom()
-	return nil
+
+	m.agentRunning = true
+	m.Screen.GetInputArea().SetFocused(false)
+	m.Screen.SetStatusBarState(tui.StatusThinking)
+
+	// Create a fresh event channel for this turn.
+	m.eventChan = make(chan agentEvent, 128)
+
+	// Agent writes events here; a bridge goroutine forwards them to m.eventChan.
+	agentEvents := make(chan agent.Event, 64)
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+
+	go func() {
+		defer close(agentEvents)
+		_ = m.Agent.Run(ctx, text, agentEvents)
+	}()
+
+	// Bridge: forward each agent event to bubbletea's channel.
+	go func() {
+		defer close(m.eventChan)
+		for event := range agentEvents {
+			m.eventChan <- agentEvent{Event: event, Done: false}
+		}
+	}()
+
+	return m.readAgentEvent
 }
 
 // Run starts the bubbletea program.
 func Run(cfg *Config) error {
 	model, err := NewAppModel(cfg)
 	if err != nil {
-		return fmt.Errorf("creating app model: %w", err)
+		return err
 	}
 
 	p := tea.NewProgram(model,
@@ -170,7 +284,7 @@ func Run(cfg *Config) error {
 	)
 
 	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("running TUI: %w", err)
+		return err
 	}
 
 	return nil

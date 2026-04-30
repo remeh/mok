@@ -15,8 +15,9 @@ A terminal-based coding agent harness in Go for local LLMs via llama-server (Ope
 | Phase | What | Files |
 |-------|------|-------|
 | 1 | TUI + Config | See [phase-1-app.md](./phase-1-app.md) |
-| 2 | Agent + Streaming | See [phase-2-agent.md](./phase-2-agent.md) |
-| 3 | Tool Calling | See [phase-3-tools.md](./phase-3-tools.md) |
+| 2A | Agent — Streaming, Thinking, TUI Wiring | See [phase-2a-agent.md](./phase-2a-agent.md) |
+| 2B | Agent — Tool Calls, JSON Repair, Quirks | See [phase-2b-agent.md](./phase-2b-agent.md) |
+| 3 | Tool Calling (built-in tools) | See [phase-3-tools.md](./phase-3-tools.md) |
 | 4 | Compaction | See [phase-4-compaction.md](./phase-4-compaction.md) |
 | 5 | MCP Servers | See [phase-5-mcp.md](./phase-5-mcp.md) |
 

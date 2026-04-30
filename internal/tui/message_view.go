@@ -86,8 +86,23 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 		content = fmt.Sprintf("[%s] %s(%s)", msg.ToolName, msg.ToolName, msg.ToolArgs)
 	}
 
-	wrapped := wordwrap.String(label+" "+content, v.width-2)
-	return len(strings.Split(wrapped, "\n"))
+	lines := 0
+	if content != "" || msg.ThinkingText != "" {
+		// Thinking text shows as one collapsed line
+		thinkingLine := ""
+		if msg.ThinkingText != "" {
+			thinkingLine = v.theme.Dim.Render("  [thinking]") + "\n"
+			lines++
+		}
+		text := label + " " + content
+		wrapped := wordwrap.String(text, v.width-2)
+		lines += len(strings.Split(wrapped, "\n"))
+		_ = thinkingLine
+	} else {
+		// Empty streaming message: one line for label
+		lines = 1
+	}
+	return lines
 }
 
 // messageLabel returns the styled label prefix for a message.
@@ -175,6 +190,14 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	label := v.messageLabel(msg)
 	style := v.messageStyle(msg)
 
+	var lines []string
+
+	// Render thinking text as a collapsed indicator
+	if msg.ThinkingText != "" {
+		thinkingIndicator := v.theme.Dim.Render("  [thinking]")
+		lines = append(lines, thinkingIndicator)
+	}
+
 	var content string
 	switch msg.Type {
 	case types.MsgToolCall:
@@ -188,14 +211,15 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	text := label + " " + content
 	wrapped := wordwrap.String(text, v.width-2)
 
-	lines := strings.Split(wrapped, "\n")
-	for i, line := range lines {
-		if i == 0 {
-			lines[i] = style.Render(line)
-		} else {
-			// Indent continuation lines to align with content after label
-			lines[i] = style.Render(line)
-		}
+	contentLines := strings.Split(wrapped, "\n")
+	for _, line := range contentLines {
+		lines = append(lines, style.Render(line))
+	}
+
+	// If streaming, add a cursor indicator
+	if msg.Streaming {
+		cursorLine := style.Render("▌")
+		lines = append(lines, cursorLine)
 	}
 
 	return lines

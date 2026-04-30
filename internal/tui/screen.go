@@ -8,23 +8,22 @@ import (
 
 // Screen composes all TUI components into the main layout.
 type Screen struct {
-	theme      Theme
-	msgView    *MessageView
-	inputArea  *InputArea
-	statusBar  *StatusBar
-	width      int
-	height     int
-	streaming  bool
-	partialText string
+	theme     Theme
+	msgView   *MessageView
+	inputArea *InputArea
+	statusBar *StatusBar
+	width     int
+	height    int
+	streaming bool
 }
 
 // NewScreen creates a new Screen with all sub-components.
 func NewScreen(theme Theme) *Screen {
 	return &Screen{
-		theme:      theme,
-		msgView:    NewMessageView(theme),
-		inputArea:  NewInputArea(theme, ">"),
-		statusBar:  NewStatusBar(theme),
+		theme:     theme,
+		msgView:   NewMessageView(theme),
+		inputArea: NewInputArea(theme, ">"),
+		statusBar: NewStatusBar(theme),
 	}
 }
 
@@ -33,7 +32,6 @@ func (s *Screen) SetDimensions(w, h int) {
 	s.width = w
 	s.height = h
 
-	// Reserve lines: 1 for input, 1 for status bar
 	contentHeight := h - 2
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -89,31 +87,12 @@ func (s *Screen) SetStreaming(streaming bool) {
 	}
 }
 
-// SetPartialText sets the partial streaming text.
-func (s *Screen) SetPartialText(text string) {
-	s.partialText = text
-}
-
 // Render returns the complete screen as a string.
 func (s *Screen) Render() string {
-	// Build partial message if streaming
-	var messages []*types.Message
-	if s.partialText != "" {
-		// Append partial text as a temporary assistant message
-		msg := types.NewMessage(types.MsgAssistant, s.partialText)
-		messages = append(messages, msg)
-	}
-
-	// Render message view
 	msgLines := s.msgView.Render()
-
-	// Render input area
 	inputLine := s.inputArea.Render()
-
-	// Render status bar
 	statusLine := s.statusBar.Render()
 
-	// Combine
 	parts := []string{msgLines, inputLine, statusLine}
 	return strings.Join(parts, "\n")
 }

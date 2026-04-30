@@ -3,160 +3,313 @@ package llm
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/user/mmok/internal/app"
 )
 
-// Client wraps an OpenAI-compatible API endpoint.
+// Client talks to OpenAI-compatible endpoints.
 type Client struct {
-	config *app.Config
-	client *http.Client
+	BaseURL     string
+	BearerToken string
+	httpClient  *http.Client
 }
 
-// New creates a new LLM client.
-func New(cfg *app.Config) *Client {
+// NewClient creates a new LLM client.
+func NewClient(baseURL, bearerToken string) *Client {
 	return &Client{
-		config: cfg,
-		client: &http.Client{
+		BaseURL:     baseURL,
+		BearerToken: bearerToken,
+		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
 	}
 }
 
-// ChatRequest is the request body for chat completions.
+// Message is the wire-format message for the LLM API.
+type Message struct {
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	ToolCalls  []APIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
+	Name       string        `json:"name,omitempty"`
+}
+
+// APIToolCall is a tool call in the wire format.
+type APIToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// ChatRequest is a single chat completion request.
 type ChatRequest struct {
-	Model       string      `json:"model"`
-	Messages    []ChatMsg   `json:"messages"`
-	Stream      bool        `json:"stream"`
-	Temperature float32     `json:"temperature,omitempty"`
-	MaxTokens   int         `json:"max_tokens,omitempty"`
+	Model       string
+	Messages    []Message
+	Tools       []ToolSpec
+	Temperature float32
+	MaxTokens   int
 }
 
-// ChatMsg is a single message in the chat request.
-type ChatMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+// ToolSpec is the wire format for a tool definition sent to the API.
+type ToolSpec struct {
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
 }
 
-// ChatResponse is a single SSE chunk from the streaming API.
-type ChatResponse struct {
-	Choices []Choice `json:"choices"`
-	Done    bool     `json:"done,omitempty"`
+// ToolFunction is the function part of a ToolSpec.
+type ToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
-// Choice holds a delta from the streaming response.
-type Choice struct {
-	Delta      Delta `json:"delta"`
-	FinishReason string `json:"finish_reason,omitempty"`
+// StreamEvent is emitted by the SSE parser.
+type StreamEvent struct {
+	Type          string
+	Text          string
+	ThinkingDelta string
+	ToolCall      *PartialTC
+	Usage         *Usage
+	Stop          string
+	Err           error
 }
 
-// Delta is the partial content update.
-type Delta struct {
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content,omitempty"`
+// PartialTC tracks an in-progress tool call during streaming.
+type PartialTC struct {
+	Index   *int
+	ID      string
+	Name    string
+	RawArgs string
 }
 
-// StreamHandler is called for each content chunk.
-type StreamHandler func(content string) error
+// Usage is token usage from the API.
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
 
-// Chat streams a chat completion. Returns the full response text.
-func (c *Client) Chat(messages []ChatMsg, handler StreamHandler) (string, error) {
-	req := ChatRequest{
-		Model:       c.config.Model,
-		Messages:    messages,
-		Stream:      true,
-		Temperature: c.config.Temperature,
-		MaxTokens:   c.config.MaxTokens,
-	}
-
-	body, err := json.Marshal(req)
+// Stream sends a chat completion and returns a channel of events.
+// The channel is closed when streaming completes.
+// Cancelling ctx aborts the in-flight request immediately.
+func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEvent, error) {
+	body, err := json.Marshal(c.buildRequestBody(req))
 	if err != nil {
-		return "", fmt.Errorf("marshaling request: %w", err)
+		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	url := c.config.Endpoint
+	url := c.BaseURL
 	if !strings.HasSuffix(url, "/chat/completions") {
 		url = strings.TrimSuffix(url, "/") + "/chat/completions"
 	}
 
-	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+	if c.BearerToken != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
-	defer resp.Body.Close()
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
+		resp.Body.Close()
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
 	}
 
-	return c.parseStream(resp.Body, handler)
+	events := make(chan StreamEvent, 64)
+	go c.parseStream(resp.Body, events)
+	return events, nil
 }
 
-// parseStream reads SSE events and calls the handler for each content chunk.
-func (c *Client) parseStream(body io.Reader, handler StreamHandler) (string, error) {
-	var fullText strings.Builder
-	scanner := bufio.NewScanner(body)
+func (c *Client) buildRequestBody(req *ChatRequest) map[string]any {
+	body := map[string]any{
+		"model":       req.Model,
+		"messages":    req.Messages,
+		"stream":      true,
+		"temperature": req.Temperature,
+	}
+	if req.MaxTokens > 0 {
+		body["max_tokens"] = req.MaxTokens
+	}
+	if len(req.Tools) > 0 {
+		body["tools"] = req.Tools
+	}
+	return body
+}
 
-	// Increase buffer size for large responses
+func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
+	defer body.Close()
+	defer close(events)
+
+	scanner := bufio.NewScanner(body)
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	var finishReason string
 
-		// Skip empty lines
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-
-		// SSE data lines
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
 
 		data := strings.TrimPrefix(line, "data: ")
-
-		// Done signal
 		if data == "[DONE]" {
 			break
 		}
 
-		// Parse the JSON chunk
-		var resp ChatResponse
-		if err := json.Unmarshal([]byte(data), &resp); err != nil {
-			continue // skip malformed chunks
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(data), &raw); err != nil {
+			continue
 		}
 
-		// Extract content
-		for _, choice := range resp.Choices {
-			if choice.Delta.Content != "" {
-				if handler != nil {
-					if err := handler(choice.Delta.Content); err != nil {
-						return fullText.String(), err
+		// Parse usage from the top-level fields
+		if usageRaw, ok := raw["usage"]; ok {
+			if usageBytes, err := json.Marshal(usageRaw); err == nil {
+				var usage Usage
+				if err := json.Unmarshal(usageBytes, &usage); err == nil {
+					events <- StreamEvent{
+						Type:  "done",
+						Usage: &usage,
+						Stop:  finishReason,
 					}
 				}
-				fullText.WriteString(choice.Delta.Content)
+			}
+			continue
+		}
+
+		choicesRaw, ok := raw["choices"]
+		if !ok {
+			continue
+		}
+		choicesArr, ok := choicesRaw.([]any)
+		if !ok || len(choicesArr) == 0 {
+			continue
+		}
+
+		for _, choiceAny := range choicesArr {
+			choice, ok := choiceAny.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			// Check finish_reason
+			if fr, ok := choice["finish_reason"]; ok {
+				if frStr, ok := fr.(string); ok && frStr != "" {
+					finishReason = frStr
+				}
+			}
+
+			delta, ok := choice["delta"].(map[string]any)
+			if !ok {
+				continue
+			}
+
+			// Handle reasoning_content (thinking tokens)
+			if rc, ok := delta["reasoning_content"]; ok && rc != nil {
+				if rcStr, ok := rc.(string); ok && rcStr != "" {
+					events <- StreamEvent{
+						Type:          "thinking",
+						ThinkingDelta: rcStr,
+					}
+				}
+			}
+
+			// Handle content (regular text)
+			if content, ok := delta["content"]; ok && content != nil {
+				if contentStr, ok := content.(string); ok && contentStr != "" {
+					events <- StreamEvent{
+						Type: "text",
+						Text: contentStr,
+					}
+				}
+			}
+
+			// Handle tool_calls (phase 2B)
+			if tcRaw, ok := delta["tool_calls"]; ok && tcRaw != nil {
+				tcs, ok := tcRaw.([]any)
+				if !ok {
+					continue
+				}
+				for _, tcAny := range tcs {
+					tc, ok := tcAny.(map[string]any)
+					if !ok {
+						continue
+					}
+					partial := parsePartialTC(tc)
+					if partial != nil {
+						events <- StreamEvent{
+							Type:     "tool_call",
+							ToolCall: partial,
+						}
+					}
+				}
 			}
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fullText.String(), fmt.Errorf("reading stream: %w", err)
+	// Emit final done event if we haven't already (some backends omit usage chunk)
+	if finishReason != "" {
+		events <- StreamEvent{
+			Type: "done",
+			Stop: finishReason,
+		}
+	}
+}
+
+func parsePartialTC(raw map[string]any) *PartialTC {
+	tc := &PartialTC{}
+
+	if idx, ok := raw["index"]; ok {
+		if idxNum, ok := idx.(float64); ok {
+			i := int(idxNum)
+			tc.Index = &i
+		}
+	}
+	if id, ok := raw["id"]; ok {
+		if idStr, ok := id.(string); ok {
+			tc.ID = idStr
+		}
+	}
+	if fn, ok := raw["function"]; ok {
+		fnMap, ok := fn.(map[string]any)
+		if !ok {
+			return tc
+		}
+		if name, ok := fnMap["name"]; ok {
+			if nameStr, ok := name.(string); ok {
+				tc.Name = nameStr
+			}
+		}
+		if args, ok := fnMap["arguments"]; ok {
+			if argsStr, ok := args.(string); ok {
+				tc.RawArgs = argsStr
+			}
+		}
+	}
+	if id, ok := raw["id"]; ok {
+		if idStr, ok := id.(string); ok && tc.ID == "" {
+			tc.ID = idStr
+		}
 	}
 
-	return fullText.String(), nil
+	return tc
 }

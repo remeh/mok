@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -21,7 +22,6 @@ var (
 )
 
 func main() {
-	// Define CLI flags
 	showVersion := flag.Bool("version", false, "Show version")
 	prompt := flag.String("p", "", "Prompt to execute (non-interactive mode)")
 	timeout := flag.Int("t", 0, "Timeout in seconds for prompt mode (0=no limit)")
@@ -38,7 +38,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Build flags map for config loading
 	flags := map[string]string{
 		"model":              *model,
 		"endpoint":           *endpoint,
@@ -47,14 +46,12 @@ func main() {
 		"max-tokens":         fmt.Sprintf("%d", *maxTokens),
 	}
 
-	// Load configuration
 	cfg, err := app.LoadConfig(flags)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: config error: %v\n", err)
 		cfg = app.DefaultConfig()
 	}
 
-	// Prompt mode (non-interactive)
 	if *prompt != "" {
 		if err := runPrompt(cfg, *prompt, *timeout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -63,16 +60,13 @@ func main() {
 		return
 	}
 
-	// Interactive TUI mode
 	if err := app.Run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// runPrompt executes a single prompt and streams the response to stdout.
 func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
-	// Build context with timeout
 	ctx := context.Background()
 	cancel := func() {}
 
@@ -81,7 +75,6 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 	}
 	defer cancel()
 
-	// Handle SIGINT/SIGTERM
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -89,43 +82,64 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 		cancel()
 	}()
 
-	// Create LLM client
-	client := llm.New(cfg)
+	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
 
-	// Build messages
-	messages := []llm.ChatMsg{
+	messages := []llm.Message{
 		{Role: "user", Content: prompt},
 	}
 
-	// Track stats
-	startTime := time.Now()
-	var tokenCount int
-
-	// Stream handler: print each chunk as it arrives
-	handler := func(chunk string) error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			fmt.Print(chunk)
-			tokenCount++
-			return nil
-		}
+	req := &llm.ChatRequest{
+		Model:       cfg.Model,
+		Messages:    messages,
+		Temperature: cfg.Temperature,
+		MaxTokens:   cfg.MaxTokens,
 	}
 
-	// Execute
+	startTime := time.Now()
+	var charCount int
+	var usage *llm.Usage
+
 	fmt.Fprintf(os.Stderr, "\n[mmok] model=%s endpoint=%s timeout=%ds\n", cfg.Model, cfg.Endpoint, timeoutSec)
 	fmt.Fprintln(os.Stderr, strings.Repeat("-", 60))
 
-	_, err := client.Chat(messages, handler)
+	eventChan, err := client.Stream(ctx, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n[mmok] error: %v\n", err)
 		return err
 	}
 
+	scanner := bufio.NewScanner(os.Stdin)
+	go func() {
+		for scanner.Scan() {
+			cancel()
+		}
+	}()
+
+	for event := range eventChan {
+		switch event.Type {
+		case "text":
+			fmt.Print(event.Text)
+			charCount += len(event.Text)
+		case "thinking":
+			// Skip thinking tokens in prompt mode
+		case "done":
+			usage = event.Usage
+		case "error":
+			fmt.Fprintf(os.Stderr, "\n[mmok] stream error: %v\n", event.Err)
+		}
+	}
+
 	elapsed := time.Since(startTime)
-	fmt.Fprintf(os.Stderr, "\n%s\n[mmok] done in %s (%d chars)\n",
-		strings.Repeat("-", 60), elapsed.Round(time.Millisecond), tokenCount)
+	fmt.Fprint(os.Stderr, strings.Repeat("-", 60)+"\n")
+	if usage != nil {
+		fmt.Fprintf(os.Stderr, "[mmok] done in %s | tokens: prompt=%d completion=%d total=%d\n",
+			elapsed.Round(time.Millisecond), usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
+	} else {
+		// llama-server doesn't report usage in streaming mode; fall back to local estimate
+		estimatedTokens := llm.EstimateTokens(prompt) + llm.EstimateTokens(strings.Repeat(" ", charCount))
+		fmt.Fprintf(os.Stderr, "[mmok] done in %s (%d chars, ~%d tokens estimated)\n",
+			elapsed.Round(time.Millisecond), charCount, estimatedTokens)
+	}
 
 	return nil
 }

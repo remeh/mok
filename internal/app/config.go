@@ -125,6 +125,12 @@ func loadFromEnv(cfg *Config) error {
 			cfg.MaxTokens = n
 		}
 	}
+	if v, ok := envMap["BEARER_TOKEN"]; ok && v != "" {
+		cfg.BearerToken = v
+	}
+	if v, ok := envMap["MODEL_QUIRKS"]; ok && v != "" {
+		cfg.ModelQuirks = strings.Split(v, ",")
+	}
 
 	return nil
 }
@@ -152,6 +158,9 @@ func applyFlags(cfg *Config, flags map[string]string) {
 			cfg.MaxTokens = n
 		}
 	}
+	if v, ok := flags["bearer-token"]; ok && v != "" {
+		cfg.BearerToken = v
+	}
 }
 
 // mergeConfig overlays non-zero values from src onto dst.
@@ -161,6 +170,9 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.Endpoint != "" {
 		dst.Endpoint = src.Endpoint
+	}
+	if src.BearerToken != "" {
+		dst.BearerToken = src.BearerToken
 	}
 	if src.MaxContextTokens > 0 {
 		dst.MaxContextTokens = src.MaxContextTokens
@@ -173,6 +185,9 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.MaxTokens > 0 {
 		dst.MaxTokens = src.MaxTokens
+	}
+	if len(src.ModelQuirks) > 0 {
+		dst.ModelQuirks = src.ModelQuirks
 	}
 	// Temperature can be 0 intentionally, so we check a sentinel
 	// For now, if the YAML has it, it was explicitly set — we handle this

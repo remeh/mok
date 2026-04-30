@@ -17,24 +17,30 @@ go build -o mmok cmd/mmok/main.go
 go test -v ./...
 ```
 
-You can run `./mmok -t 120 -p "here is a prompt"` to test the execution / interpretation
-of a prompt. `-p` is the flag for the prompt, `-t` is a timeout in seconds. Use it while
-developing to validate your work.
+After having build the `mmok` binary, you can run `./mmok  -t 120 -p "here is a prompt" -endpoint http://localhost:8000/v1 -model gemma4-e4b`
+to test the execution / interpretation of a prompt: `-p` is the flag for the prompt, `-t` is a timeout in seconds.
+Use it while developing changes to validate your work. Note that model `qwen3.5-9b-thinking` is available as well.
 
 ## Architecture
 
 ```
 cmd/mmok/main.go            — CLI entry point, flags, prompt mode runner
+internal/agent/
+  agent.go                  — Agent struct, conversation history, context tracker
+  events.go                 — Agent event types (TurnStart, TextDelta, ThinkingDelta, etc.)
+  loop.go                   — Agent loop: build context → stream → collect → repeat
+  prompt.go                 — System prompt builder (date, CWD)
 internal/app/
   config_types.go           — Config struct + defaults
   config.go                 — YAML file → env vars → CLI flags precedence chain
-  app.go                    — bubbletea Model (Update/View), message submission
+  app.go                    — bubbletea Model (Update/View), agent event wiring
 internal/llm/
   client.go                 — OpenAI-compatible API client, SSE streaming parser
+  tokenizer.go              — Token estimation + ContextTracker
 internal/tui/
   screen.go                 — Composes MessageView + InputArea + StatusBar
-  message_view.go           — Scrollable message list with word wrap
-  input.go                  — Text input with cursor, history, line editing
+  message_view.go           — Scrollable message list with word wrap, thinking indicator
+  input.go                  — Text input with cursor, history, line editing, focus
   statusbar.go              — Bottom bar: model name, token count, state
   theme.go                  — Lipgloss color/style definitions
   utils.go                  — Shared helpers (StringsRepeat)
@@ -52,40 +58,50 @@ internal/types/
 
 ## Configuration
 
-Precedence: defaults → YAML file → `MMOK_*` env vars → CLI flags.
+Precedence: defaults → YAML file → env vars → CLI flags.
 
-Supported config keys: `model`, `endpoint`, `max_context_tokens`, `compaction_threshold`, `keep_recent_tokens`, `temperature`, `max_tokens`.
+Supported config keys: `model`, `endpoint`, `bearer_token`, `max_context_tokens`, `compaction_threshold`, `keep_recent_tokens`, `temperature`, `max_tokens`, `model_quirks`.
+
+Env vars: `MMOK_MODEL`, `MMOK_ENDPOINT`, `MMOK_BEARER_TOKEN`, `MMOK_MAX_CONTEXT_TOKENS`, `MMOK_COMPACTION_THRESHOLD`, `MMOK_KEEP_RECENT_TOKENS`, `MMOK_TEMPERATURE`, `MMOK_MAX_TOKENS`, `MMOK_MODEL_QUIRKS`.
 
 File locations searched: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.yaml`.
 
 ## Current State
 
 ### Working
-- CLI flags: `-p` (prompt mode), `-model`, `-endpoint`, `-temperature`, `-max-tokens`, `-max-context-tokens`, `-t` (timeout), `-version`
-- Prompt mode: single-shot non-interactive streaming to stdout
-- TUI: message view with scroll, input with cursor/history/line editing, status bar
-- Slash commands: `/exit`, `/quit`
-- LLM client: OpenAI-compatible SSE streaming
-- Config: YAML + env + flags with proper precedence
+- CLI flags: `-p` (prompt mode), `-model`, `-endpoint`, `-bearer-token`, `-temperature`, `-max-tokens`, `-max-context-tokens`, `-t` (timeout), `-version`
+- Prompt mode: single-shot streaming via `client.Stream()`, handles text + thinking events, shows token usage or local estimate, abort via stdin
+- TUI: fully wired to LLM client via `internal/agent` package
+- Agent loop: builds context (system prompt + history), streams text/thinking separately, collects assistant message, tracks tokens
+- Agent events: `EventTurnStart`, `EventMessageStart`, `EventTextDelta`, `EventThinkingDelta`, `EventMessageEnd`, `EventTurnEnd`, `EventError`
+- TUI message view: scrollable, word wrap, `[thinking]` collapsed indicator, cursor during streaming
+- Abort: Ctrl+C / Esc aborts running agent, then quits
+- Input disabled during agent running
+- Context tracker: `ContextTracker` with `EstimateTokens` for token estimation
+- Config: YAML + env + flags with proper precedence, `bearer_token` and `model_quirks` support
+- System prompt: includes current date and working directory
+- LLM client: OpenAI-compatible SSE streaming, context-aware abort via `http.NewRequestWithContext`, handles `reasoning_content` for thinking tokens
+- Tool call parsing scaffolding in SSE parser (for Phase 2B)
 
 ### Not Yet Implemented
-- TUI does not yet connect to the LLM client (messages echo back instead of streaming real responses)
-- No conversation history persistence
+- No conversation history persistence (in-memory only)
 - No context compaction (config fields exist but logic is absent)
-- No tool call execution
+- No tool call execution (parsing scaffolding exists in SSE client)
 - No file attachment / context file support
 
 ## Next Steps
 
-### 1. Wire TUI → LLM streaming
-The `llm.Client` works (used in prompt mode). Connect it to the TUI so that submitting a message triggers a real streaming response instead of the `(echo)` placeholder. This means:
-- Track conversation history in `AppModel`
-- Build `[]llm.ChatMsg` from `[]*types.Message`
-- Stream chunks back into the TUI via `SetPartialText` / `SetStreaming`
-- Handle errors gracefully in the status bar
+See [PLAN.md](./PLAN.md) for the full phase breakdown.
 
-### 2. Conversation persistence
-Save/load conversation history to a file so sessions survive restarts.
+### Phase 2B — Tool Calls + JSON Repair
+Add tool call accumulation from SSE, JSON repair, schema validation, tool interface/registry,
+and extend the agent loop with tool call → execute → retry. Handle model quirks (Gemma, Qwen).
 
-### 3. Context compaction
-Implement the compaction logic hinted at by `CompactionThreshold` and `KeepRecentTokens` in config — summarize older messages when context is near capacity.
+### Phase 3 — Built-in Tools
+Implement actual tools: bash, read, edit, write.
+
+### Phase 4 — Compaction
+Implement context compaction with LLM-driven summarization.
+
+### Phase 5 — MCP
+Add Model Context Protocol support for external tool providers.
