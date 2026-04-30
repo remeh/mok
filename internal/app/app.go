@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/user/mmok/internal/agent"
 	"github.com/user/mmok/internal/llm"
+	"github.com/user/mmok/internal/tools"
 	"github.com/user/mmok/internal/tui"
 	"github.com/user/mmok/internal/types"
 )
@@ -45,11 +46,15 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	screen.SetStatusBarState(tui.StatusIdle)
 
 	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
+
+	// Create tool registry (Phase 2B — tools are registered in Phase 3)
+	toolRegistry := tools.NewRegistry()
+
 	agt := agent.NewAgent(client, agent.AgentConfig{
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
-	})
+	}, toolRegistry, cfg.ModelQuirks)
 
 	return &AppModel{
 		Config:    cfg,
@@ -169,6 +174,34 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.cancel = nil
 		m.Screen.GetInputArea().SetFocused(true)
 		m.Screen.SetStatusBarState(tui.StatusIdle)
+
+	case agent.EventToolCallStart:
+		// Show tool call start with "executing..."
+		toolCallMsg := types.NewToolCall(ev.Name, ev.RawArgs)
+		m.Messages = append(m.Messages, toolCallMsg)
+
+	case agent.EventToolCallUpdate:
+		// Update the last tool call message's args (streaming args)
+		if len(m.Messages) > 0 {
+			last := m.Messages[len(m.Messages)-1]
+			if last.Type == types.MsgToolCall {
+				last.ToolArgs = ev.RawArgs
+			}
+		}
+
+	case agent.EventToolCallEnd:
+		// Finalize the tool call display
+		if len(m.Messages) > 0 {
+			last := m.Messages[len(m.Messages)-1]
+			if last.Type == types.MsgToolCall {
+				last.ToolArgs = ev.Args
+			}
+		}
+
+	case agent.EventToolResult:
+		// Show tool result
+		resultMsg := types.NewToolResult(ev.Name, ev.Result, ev.IsError)
+		m.Messages = append(m.Messages, resultMsg)
 
 	case agent.EventError:
 		m.agentRunning = false

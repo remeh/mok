@@ -51,3 +51,39 @@ type EventError struct {
 }
 
 func (EventError) eventType() string { return "error" }
+
+// EventToolCallStart is emitted when a new tool call begins streaming.
+type EventToolCallStart struct {
+	ToolCallID string
+	Name       string
+	RawArgs    string
+}
+
+func (EventToolCallStart) eventType() string { return "tool_call_start" }
+
+// EventToolCallUpdate is emitted for incremental tool call argument updates.
+type EventToolCallUpdate struct {
+	ToolCallID string
+	RawArgs    string
+}
+
+func (EventToolCallUpdate) eventType() string { return "tool_call_update" }
+
+// EventToolCallEnd is emitted when a tool call finishes streaming.
+type EventToolCallEnd struct {
+	ToolCallID string
+	Name       string
+	Args       string
+}
+
+func (EventToolCallEnd) eventType() string { return "tool_call_end" }
+
+// EventToolResult is emitted after a tool is executed.
+type EventToolResult struct {
+	ToolCallID string
+	Name       string
+	Result     string
+	IsError    bool
+}
+
+func (EventToolResult) eventType() string { return "tool_result" }

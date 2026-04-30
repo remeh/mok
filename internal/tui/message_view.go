@@ -79,30 +79,50 @@ func (v *MessageView) totalLineCount() int {
 
 // messageLineCount returns how many lines a message takes when rendered.
 func (v *MessageView) messageLineCount(msg *types.Message) int {
-	label := v.messageLabel(msg)
-	content := msg.Content
+	lines := 0
 
-	if msg.Type == types.MsgToolCall {
-		content = fmt.Sprintf("[%s] %s(%s)", msg.ToolName, msg.ToolName, msg.ToolArgs)
+	// Thinking text shows as one collapsed line
+	if msg.ThinkingText != "" {
+		lines++
 	}
 
-	lines := 0
-	if content != "" || msg.ThinkingText != "" {
-		// Thinking text shows as one collapsed line
-		thinkingLine := ""
-		if msg.ThinkingText != "" {
-			thinkingLine = v.theme.Dim.Render("  [thinking]") + "\n"
+	switch msg.Type {
+	case types.MsgToolCall:
+		// Tool call: "tool_call tool_name(args)" — one line typically
+		content := fmt.Sprintf("%s %s(%s)", v.messageLabel(msg), msg.ToolName, truncate(msg.ToolArgs, 80))
+		wrapped := wordwrap.String(content, v.width-2)
+		lines += len(strings.Split(wrapped, "\n"))
+	case types.MsgToolResult:
+		// Tool result: label + result content
+		content := msg.Content
+		if content != "" {
+			text := v.messageLabel(msg) + " " + content
+			wrapped := wordwrap.String(text, v.width-2)
+			lines += len(strings.Split(wrapped, "\n"))
+		} else {
 			lines++
 		}
-		text := label + " " + content
-		wrapped := wordwrap.String(text, v.width-2)
-		lines += len(strings.Split(wrapped, "\n"))
-		_ = thinkingLine
-	} else {
-		// Empty streaming message: one line for label
-		lines = 1
+	default:
+		content := msg.Content
+		if content != "" || msg.ThinkingText != "" {
+			text := v.messageLabel(msg) + " " + content
+			wrapped := wordwrap.String(text, v.width-2)
+			lines += len(strings.Split(wrapped, "\n"))
+		} else {
+			// Empty streaming message: one line for label
+			lines = 1
+		}
 	}
+
 	return lines
+}
+
+// truncate shortens a string to maxLen, adding "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // messageLabel returns the styled label prefix for a message.
@@ -201,7 +221,7 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	var content string
 	switch msg.Type {
 	case types.MsgToolCall:
-		content = fmt.Sprintf("%s(%s)", msg.ToolName, msg.ToolArgs)
+		content = fmt.Sprintf("%s(%s)", msg.ToolName, truncate(msg.ToolArgs, 80))
 	case types.MsgToolResult:
 		content = msg.Content
 	default:
