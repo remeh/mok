@@ -14,6 +14,7 @@ type Config struct {
 	Temperature         float32  `yaml:"temperature"`
 	MaxTokens           int      `yaml:"max_tokens"`
 	ModelQuirks         []string `yaml:"model_quirks"`
+	Debug               bool     `yaml:"debug"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.

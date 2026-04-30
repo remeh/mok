@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/user/mmok/internal/llm"
 	"github.com/user/mmok/internal/tools"
@@ -25,12 +26,13 @@ type Agent struct {
 	systemPrompt string
 	lastThinking string
 	quirks       []string
+	debug        *DebugLogger
 }
 
 // NewAgent creates a new Agent.
-func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, quirks []string) *Agent {
+func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, quirks []string, debug *DebugLogger) *Agent {
 	prompt := BuildSystemPrompt(&PromptConfig{})
-	return &Agent{
+	a := &Agent{
 		client:       client,
 		config:       cfg,
 		tools:        toolRegistry,
@@ -38,7 +40,23 @@ func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry,
 		tracker:      llm.NewContextTracker(),
 		systemPrompt: prompt,
 		quirks:       quirks,
+		debug:        debug,
 	}
+	if debug != nil {
+		debug.Info("AGENT", "Creating agent with model=%s", cfg.Model)
+		if toolRegistry != nil {
+			debug.Tool("TOOLS", "Registry initialized with %d tools: %s",
+				len(toolRegistry.All()),
+				func() string {
+					names := make([]string, 0, len(toolRegistry.All()))
+					for _, t := range toolRegistry.All() {
+						names = append(names, t.Definition().Name)
+					}
+					return strings.Join(names, ", ")
+				}())
+		}
+	}
+	return a
 }
 
 // Run starts the agent loop for a single user message.
@@ -82,6 +100,11 @@ func (a *Agent) HasQuirk(quirk string) bool {
 // Tools returns the tool registry.
 func (a *Agent) Tools() *tools.Registry {
 	return a.tools
+}
+
+// Debug returns the debug logger.
+func (a *Agent) Debug() *DebugLogger {
+	return a.debug
 }
 
 // String returns a string representation of the agent state.

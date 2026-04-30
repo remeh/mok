@@ -47,6 +47,7 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	screen.SetMaxTokens(cfg.MaxContextTokens)
 	screen.SetStatusBarState(tui.StatusIdle)
 
+	// Debug is disabled in TUI mode — it breaks the terminal.
 	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
 
 	// Create tool registry and register built-in tools
@@ -60,7 +61,7 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
-	}, toolRegistry, cfg.ModelQuirks)
+	}, toolRegistry, cfg.ModelQuirks, nil)
 
 	return &AppModel{
 		Config:    cfg,

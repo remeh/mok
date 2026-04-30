@@ -161,6 +161,9 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	if v, ok := flags["bearer-token"]; ok && v != "" {
 		cfg.BearerToken = v
 	}
+	if v, ok := flags["debug"]; ok && v == "true" {
+		cfg.Debug = true
+	}
 }
 
 // mergeConfig overlays non-zero values from src onto dst.

@@ -17,6 +17,7 @@ type Client struct {
 	BaseURL     string
 	BearerToken string
 	httpClient  *http.Client
+	debug       DebugLogger
 }
 
 // NewClient creates a new LLM client.
@@ -28,6 +29,12 @@ func NewClient(baseURL, bearerToken string) *Client {
 			Timeout: 5 * time.Minute,
 		},
 	}
+}
+
+// WithDebug sets the debug logger on the client.
+func (c *Client) WithDebug(debug DebugLogger) *Client {
+	c.debug = debug
+	return c
 }
 
 // Message is the wire-format message for the LLM API.
@@ -120,6 +127,12 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 		httpReq.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
 
+	if c.debug != nil {
+		c.debug.Request("HTTP", "POST %s", url)
+		c.debug.Request("HTTP", "Headers: Content-Type=application/json, Authorization=[REDACTED]")
+		c.debug.JSON("HTTP", "Request body", c.buildRequestBody(req))
+	}
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
@@ -128,7 +141,14 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if c.debug != nil {
+			c.debug.Response("HTTP", "Error response: %s, body: %s", resp.Status, string(errBody))
+		}
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
+	}
+
+	if c.debug != nil {
+		c.debug.Response("HTTP", "Response: %s", resp.Status)
 	}
 
 	events := make(chan StreamEvent, 64)
@@ -161,6 +181,9 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 	scanner.Buffer(buf, 1024*1024)
 
 	var finishReason string
+	if c.debug != nil {
+		c.debug.Response("SSE", "Stream parsing started")
+	}
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -173,6 +196,9 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
+			if c.debug != nil {
+				c.debug.Response("SSE", "[DONE] received, ending stream")
+			}
 			break
 		}
 
@@ -190,6 +216,10 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 						Type:  "done",
 						Usage: &usage,
 						Stop:  finishReason,
+					}
+					if c.debug != nil {
+						c.debug.Response("SSE", "Usage: prompt=%d completion=%d total=%d",
+							usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
 					}
 				}
 			}
@@ -260,6 +290,10 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 							Type:     "tool_call",
 							ToolCall: partial,
 						}
+						if c.debug != nil {
+							c.debug.Event("SSE", "tool_call: index=%v id=%s name=%s args=%q",
+								partial.Index, partial.ID, partial.Name, partial.RawArgs)
+						}
 					}
 				}
 			}
@@ -271,6 +305,9 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 		events <- StreamEvent{
 			Type: "done",
 			Stop: finishReason,
+		}
+		if c.debug != nil {
+			c.debug.Response("SSE", "Final done event: stop=%s", finishReason)
 		}
 	}
 }

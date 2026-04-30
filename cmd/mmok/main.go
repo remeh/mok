@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -11,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/user/mmok/internal/agent"
 	"github.com/user/mmok/internal/app"
 	"github.com/user/mmok/internal/llm"
+	"github.com/user/mmok/internal/tools"
 )
 
 var (
@@ -27,9 +28,11 @@ func main() {
 	timeout := flag.Int("t", 0, "Timeout in seconds for prompt mode (0=no limit)")
 	model := flag.String("model", "", "LLM model name")
 	endpoint := flag.String("endpoint", "", "API endpoint URL")
+	bearerToken := flag.String("bearer-token", "", "Bearer token for API authentication")
 	maxContext := flag.Int("max-context-tokens", 0, "Max context tokens")
 	temperature := flag.Float64("temperature", 0, "Sampling temperature")
 	maxTokens := flag.Int("max-tokens", 0, "Max response tokens")
+	debug := flag.Bool("debug", false, "Enable debug logging to stderr")
 
 	flag.Parse()
 
@@ -41,9 +44,11 @@ func main() {
 	flags := map[string]string{
 		"model":              *model,
 		"endpoint":           *endpoint,
+		"bearer-token":       *bearerToken,
 		"max-context-tokens": fmt.Sprintf("%d", *maxContext),
 		"temperature":        fmt.Sprintf("%f", *temperature),
 		"max-tokens":         fmt.Sprintf("%d", *maxTokens),
+		"debug":              fmt.Sprintf("%t", *debug),
 	}
 
 	cfg, err := app.LoadConfig(flags)
@@ -82,64 +87,84 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 		cancel()
 	}()
 
-	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
-
-	messages := []llm.Message{
-		{Role: "user", Content: prompt},
+	// Create debug logger
+	debug := agent.NewDebugLogger(cfg.Debug)
+	if cfg.Debug {
+		debug.Info("CONFIG", "Debug mode enabled")
 	}
 
-	req := &llm.ChatRequest{
+	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
+	client.WithDebug(debug)
+
+	// Create tool registry (same as TUI mode)
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Add(&tools.ReadTool{CWD: cfg.CWD})
+	toolRegistry.Add(&tools.WriteTool{CWD: cfg.CWD})
+	toolRegistry.Add(&tools.EditTool{CWD: cfg.CWD})
+	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
+
+	agt := agent.NewAgent(client, agent.AgentConfig{
 		Model:       cfg.Model,
-		Messages:    messages,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
-	}
+	}, toolRegistry, cfg.ModelQuirks, debug)
 
 	startTime := time.Now()
 	var charCount int
-	var usage *llm.Usage
+	var lastUsage *llm.Usage
 
 	fmt.Fprintf(os.Stderr, "\n[mmok] model=%s endpoint=%s timeout=%ds\n", cfg.Model, cfg.Endpoint, timeoutSec)
 	fmt.Fprintln(os.Stderr, strings.Repeat("-", 60))
 
-	eventChan, err := client.Stream(ctx, req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "\n[mmok] error: %v\n", err)
-		return err
-	}
+	events := make(chan agent.Event, 128)
 
-	scanner := bufio.NewScanner(os.Stdin)
+	// Run agent loop in background
+	errCh := make(chan error, 1)
 	go func() {
-		for scanner.Scan() {
-			cancel()
-		}
+		errCh <- agt.Run(ctx, prompt, events)
+		close(events)
 	}()
 
-	for event := range eventChan {
-		switch event.Type {
-		case "text":
-			fmt.Print(event.Text)
-			charCount += len(event.Text)
-		case "thinking":
+	for ev := range events {
+		switch e := ev.(type) {
+		case agent.EventTextDelta:
+			fmt.Print(e.Text)
+			charCount += len(e.Text)
+		case agent.EventThinkingDelta:
 			// Skip thinking tokens in prompt mode
-		case "done":
-			usage = event.Usage
-		case "error":
-			fmt.Fprintf(os.Stderr, "\n[mmok] stream error: %v\n", event.Err)
+		case agent.EventToolCallStart:
+			fmt.Fprintf(os.Stderr, "\n[tool] %s\n", e.Name)
+		case agent.EventToolResult:
+			if e.IsError {
+				fmt.Fprintf(os.Stderr, "[tool] %s error: %s\n", e.Name, e.Result)
+			} else {
+				// Truncate long tool results in stderr output
+				result := e.Result
+				if len(result) > 200 {
+					result = result[:200] + "..."
+				}
+				fmt.Fprintf(os.Stderr, "[tool] %s done (%d bytes)\n", e.Name, len(e.Result))
+			}
+		case agent.EventMessageEnd:
+			lastUsage = e.Usage
+		case agent.EventError:
+			fmt.Fprintf(os.Stderr, "\n[mmok] error: %v\n", e.Err)
 		}
 	}
 
+	agentErr := <-errCh
+
 	elapsed := time.Since(startTime)
+	fmt.Fprintln(os.Stderr)
 	fmt.Fprint(os.Stderr, strings.Repeat("-", 60)+"\n")
-	if usage != nil {
+	if lastUsage != nil {
 		fmt.Fprintf(os.Stderr, "[mmok] done in %s | tokens: prompt=%d completion=%d total=%d\n",
-			elapsed.Round(time.Millisecond), usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
+			elapsed.Round(time.Millisecond), lastUsage.PromptTokens, lastUsage.CompletionTokens, lastUsage.TotalTokens)
 	} else {
-		// llama-server doesn't report usage in streaming mode; fall back to local estimate
 		estimatedTokens := llm.EstimateTokens(prompt) + llm.EstimateTokens(strings.Repeat(" ", charCount))
 		fmt.Fprintf(os.Stderr, "[mmok] done in %s (%d chars, ~%d tokens estimated)\n",
 			elapsed.Round(time.Millisecond), charCount, estimatedTokens)
 	}
 
-	return nil
+	return agentErr
 }
