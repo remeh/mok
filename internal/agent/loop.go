@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/user/mmok/internal/llm"
+	"github.com/user/mmok/internal/quirks"
 	"github.com/user/mmok/internal/tools"
 )
 
@@ -172,10 +173,20 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 				stopReason, len(toolCallOrder), assistantText.Len(), thinkingText.Len())
 		}
 
+        // Some models are not sending any content after they're very
+        // last thought, let's use the thinking data as content instead.
+        // Also, some sanitizing to remove possible leaky tags.
+		content, _ := quirks.UseThinkingAsContent(
+			assistantText.String(),
+			thinkingText.String(),
+			debug,
+		)
+		content, _ = quirks.SanitizeContent(content, debug)
+
 		// Save assistant message to history
 		assistantMsg := llm.Message{
 			Role:    "assistant",
-			Content: assistantText.String(),
+			Content: content,
 		}
 
 		// If stop reason is tool_calls, include tool calls and execute them

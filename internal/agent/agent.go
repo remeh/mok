@@ -25,12 +25,11 @@ type Agent struct {
 	tracker      *llm.ContextTracker
 	systemPrompt string
 	lastThinking string
-	quirks       []string
 	debug        *DebugLogger
 }
 
 // NewAgent creates a new Agent.
-func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, quirks []string, debug *DebugLogger) *Agent {
+func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, debug *DebugLogger) *Agent {
 	prompt := BuildSystemPrompt(&PromptConfig{})
 	a := &Agent{
 		client:       client,
@@ -39,7 +38,6 @@ func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry,
 		messages:     make([]llm.Message, 0),
 		tracker:      llm.NewContextTracker(),
 		systemPrompt: prompt,
-		quirks:       quirks,
 		debug:        debug,
 	}
 	if debug != nil {
@@ -85,16 +83,6 @@ func (a *Agent) LastThinking() string {
 // TokenCount returns the estimated total token count.
 func (a *Agent) TokenCount() int {
 	return a.tracker.TotalTokens()
-}
-
-// HasQuirk returns true if the given model quirk is enabled.
-func (a *Agent) HasQuirk(quirk string) bool {
-	for _, q := range a.quirks {
-		if q == quirk {
-			return true
-		}
-	}
-	return false
 }
 
 // Tools returns the tool registry.

@@ -13,7 +13,6 @@ type Config struct {
 	KeepRecentTokens    int      `yaml:"keep_recent_tokens"`
 	Temperature         float32  `yaml:"temperature"`
 	MaxTokens           int      `yaml:"max_tokens"`
-	ModelQuirks         []string `yaml:"model_quirks"`
 	Debug               bool     `yaml:"debug"`
 }
 
@@ -29,16 +28,5 @@ func DefaultConfig() *Config {
 		KeepRecentTokens:    16384,
 		Temperature:         0.7,
 		MaxTokens:           0,
-		ModelQuirks:         []string{},
 	}
-}
-
-// HasQuirk returns true if the given quirk is enabled.
-func (c *Config) HasQuirk(quirk string) bool {
-	for _, q := range c.ModelQuirks {
-		if q == quirk {
-			return true
-		}
-	}
-	return false
 }

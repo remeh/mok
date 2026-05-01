@@ -128,9 +128,6 @@ func loadFromEnv(cfg *Config) error {
 	if v, ok := envMap["BEARER_TOKEN"]; ok && v != "" {
 		cfg.BearerToken = v
 	}
-	if v, ok := envMap["MODEL_QUIRKS"]; ok && v != "" {
-		cfg.ModelQuirks = strings.Split(v, ",")
-	}
 	if v, ok := envMap["DEBUG"]; ok && v == "true" {
 		cfg.Debug = true
 	}
@@ -191,9 +188,6 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.MaxTokens > 0 {
 		dst.MaxTokens = src.MaxTokens
-	}
-	if len(src.ModelQuirks) > 0 {
-		dst.ModelQuirks = src.ModelQuirks
 	}
 	if src.Debug {
 		dst.Debug = true
