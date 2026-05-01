@@ -101,7 +101,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyCtrlC:
 			if m.agentRunning {
 				m.abortAgent()
 			}
@@ -110,6 +110,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Debug.Close()
 			}
 			return m, tea.Quit
+
+		case tea.KeyEsc:
+			if m.agentRunning {
+				m.abortAgent()
+			}
+			break
 
 		case tea.KeyCtrlO:
 			// Expand all collapsed tool results
