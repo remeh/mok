@@ -181,6 +181,24 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Screen.GetMessageView().ScrollUp()
 		case tea.MouseButtonWheelDown:
 			m.Screen.GetMessageView().ScrollDown()
+		case tea.MouseButtonLeft:
+			// Only toggle on press, not release or motion
+			if msg.Action != tea.MouseActionPress {
+				break
+			}
+			// Click within the message view area to toggle expand/collapse
+			if msg.Y < m.height-2 {
+				idx := m.Screen.GetMessageView().MessageAtY(msg.Y)
+				if idx >= 0 && idx < len(m.Messages) {
+					msgAtClick := m.Messages[idx]
+					switch {
+					case msgAtClick.Type == types.MsgToolResult && msgAtClick.Summary != "":
+						msgAtClick.Collapsed = !msgAtClick.Collapsed
+					case msgAtClick.ThinkingText != "":
+						msgAtClick.ThinkingExpanded = !msgAtClick.ThinkingExpanded
+					}
+				}
+			}
 		}
 
 	case agentEvent:

@@ -9,6 +9,13 @@ import (
 	"github.com/user/mmok/internal/types"
 )
 
+// messageLineRange maps a message index to its line range in the rendered output.
+type messageLineRange struct {
+	msgIndex int
+	startLine int
+	endLine   int // exclusive
+}
+
 // MessageView renders the conversation message list.
 type MessageView struct {
 	theme      Theme
@@ -19,6 +26,7 @@ type MessageView struct {
 	visible     int // number of visible lines
 	autoScroll  bool
 	cursorFrame int // frame counter for blinking cursor
+	lineRanges  []messageLineRange // built during Render
 }
 
 // NewMessageView creates a new MessageView.
@@ -104,9 +112,14 @@ func (v *MessageView) totalLineCount() int {
 func (v *MessageView) messageLineCount(msg *types.Message) int {
 	lines := 0
 
-	// Thinking text shows as one collapsed line
+	// Thinking text: one collapsed line or full content when expanded
 	if msg.ThinkingText != "" {
-		lines++
+		if msg.ThinkingExpanded {
+			wrapped := wordwrap.String("  [thinking] "+msg.ThinkingText, v.width-2)
+			lines += len(strings.Split(wrapped, "\n"))
+		} else {
+			lines++
+		}
 	}
 
 	switch msg.Type {
@@ -206,11 +219,18 @@ func (v *MessageView) Render() string {
 		return StringsRepeat("\n", max(0, v.height/2-1)) + centered
 	}
 
-	// Build all lines
+	// Build all lines and track line ranges per message
 	var allLines []string
-	for _, msg := range v.messages {
+	v.lineRanges = make([]messageLineRange, 0, len(v.messages))
+	for i, msg := range v.messages {
+		startLine := len(allLines)
 		lines := v.renderMessage(msg)
 		allLines = append(allLines, lines...)
+		v.lineRanges = append(v.lineRanges, messageLineRange{
+			msgIndex:  i,
+			startLine: startLine,
+			endLine:   len(allLines),
+		})
 	}
 
 	// Auto-scroll if needed
@@ -243,10 +263,18 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 
 	var lines []string
 
-	// Render thinking text as a collapsed indicator
+	// Render thinking text: collapsed indicator or full text
 	if msg.ThinkingText != "" {
-		thinkingIndicator := v.theme.Dim.Render("  [thinking]")
-		lines = append(lines, thinkingIndicator)
+		if msg.ThinkingExpanded {
+			text := "  [thinking] " + msg.ThinkingText
+			wrapped := wordwrap.String(text, v.width-2)
+			for _, line := range strings.Split(wrapped, "\n") {
+				lines = append(lines, v.theme.Dim.Render(line))
+			}
+		} else {
+			hint := "  [thinking]  (click to expand)"
+			lines = append(lines, v.theme.Dim.Render(hint))
+		}
 	}
 
 	var content string
@@ -256,7 +284,7 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	case types.MsgToolResult:
 		if msg.Collapsed && msg.Summary != "" {
 			// Show collapsed summary with expand hint
-			content = fmt.Sprintf("[%s] %s  (ctrl-o to expand all)", msg.ToolName, msg.Summary)
+			content = fmt.Sprintf("[%s] %s  (click to expand)", msg.ToolName, msg.Summary)
 			lines = append(lines, style.Render("  "+content))
 			return lines
 		}
@@ -301,6 +329,19 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	}
 
 	return lines
+}
+
+// MessageAtY returns the message index at a given screen Y coordinate (0-based),
+// or -1 if no message is at that position.
+func (v *MessageView) MessageAtY(y int) int {
+	// Convert screen Y to absolute line index
+	absLine := y + v.scrollPos
+	for _, lr := range v.lineRanges {
+		if absLine >= lr.startLine && absLine < lr.endLine {
+			return lr.msgIndex
+		}
+	}
+	return -1
 }
 
 func max(a, b int) int {

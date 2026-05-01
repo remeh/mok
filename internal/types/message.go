@@ -28,8 +28,9 @@ type Message struct {
 	ToolArgs     string
 	IsError      bool
 	Streaming    bool
-	Collapsed    bool // When true, show Summary instead of Content
-	Timestamp    time.Time
+	Collapsed        bool // When true, show Summary instead of Content
+	ThinkingExpanded bool // When true, show full thinking text
+	Timestamp        time.Time
 }
 
 // NewMessage creates a new Message with a unique ID.

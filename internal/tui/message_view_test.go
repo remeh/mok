@@ -183,7 +183,7 @@ func TestMessageViewToolResult(t *testing.T) {
 	if !strings.Contains(rendered, "[read]") {
 		t.Errorf("Render should contain tool name: %q", rendered)
 	}
-	if !strings.Contains(rendered, "ctrl-o to expand") {
+	if !strings.Contains(rendered, "click to expand") {
 		t.Errorf("Render should contain expand hint: %q", rendered)
 	}
 }
