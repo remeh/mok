@@ -33,6 +33,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 
 	// Tool call loop: stream → collect → execute tools → repeat (if tool_calls stop)
 	iteration := 0
+	emptyRetries := 0
 	for {
 		if iteration >= maxToolCallIterations {
 			err := fmt.Errorf("max tool call iterations (%d) reached", maxToolCallIterations)
@@ -173,9 +174,32 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 				stopReason, len(toolCallOrder), assistantText.Len(), thinkingText.Len())
 		}
 
-        // Some models are not sending any content after they're very
-        // last thought, let's use the thinking data as content instead.
-        // Also, some sanitizing to remove possible leaky tags.
+		// Quirk: some models return stop with no content at all (just EOS token).
+		// Retry up to MaxEmptyRetries times before surfacing an error.
+		if quirks.IsEmptyResponse(stopReason, assistantText.Len(), thinkingText.Len(), len(toolCallOrder), debug) {
+			emptyRetries++
+			if emptyRetries <= quirks.MaxEmptyRetries {
+				if debug != nil {
+					debug.Event("AGENT", "Empty response, retrying (%d/%d)", emptyRetries, quirks.MaxEmptyRetries)
+				}
+				iteration++
+				continue
+			}
+			err := fmt.Errorf("model returned empty response after %d retries", quirks.MaxEmptyRetries)
+			events <- EventError{Err: err}
+			events <- EventTurnEnd{}
+			if debug != nil {
+				debug.Event("AGENT", "Turn ended (empty response after retries)")
+			}
+			return err
+		}
+
+		// Reset empty retries on successful response
+		emptyRetries = 0
+
+		// Some models are not sending any content after they're very
+		// last thought, let's use the thinking data as content instead.
+		// Also, some sanitizing to remove possible leaky tags.
 		content, _ := quirks.UseThinkingAsContent(
 			assistantText.String(),
 			thinkingText.String(),
