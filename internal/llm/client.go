@@ -26,7 +26,7 @@ func NewClient(baseURL, bearerToken string) *Client {
 		BaseURL:     baseURL,
 		BearerToken: bearerToken,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
+			Timeout: 1 * time.Hour,
 		},
 	}
 }
@@ -158,10 +158,11 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 
 func (c *Client) buildRequestBody(req *ChatRequest) map[string]any {
 	body := map[string]any{
-		"model":       req.Model,
-		"messages":    req.Messages,
-		"stream":      true,
-		"temperature": req.Temperature,
+		"model":        req.Model,
+		"messages":     req.Messages,
+		"stream":       true,
+		"stream_options": map[string]any{"include_usage": true},
+		"temperature":  req.Temperature,
 	}
 	if req.MaxTokens > 0 {
 		body["max_tokens"] = req.MaxTokens
@@ -181,6 +182,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 	scanner.Buffer(buf, 1024*1024)
 
 	var finishReason string
+	receivedDone := false
 	if c.debug != nil {
 		c.debug.Response("SSE", "Stream parsing started")
 	}
@@ -196,6 +198,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
+			receivedDone = true
 			if c.debug != nil {
 				c.debug.Response("SSE", "[DONE] received, ending stream")
 			}
@@ -297,6 +300,17 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 					}
 				}
 			}
+		}
+	}
+
+	// Log abnormal stream termination (no [DONE], no finish_reason)
+	if !receivedDone && c.debug != nil {
+		if scanErr := scanner.Err(); scanErr != nil {
+			c.debug.Response("SSE", "STREAM ABORTED: scanner error: %v (finish_reason=%q)", scanErr, finishReason)
+		} else if finishReason == "" {
+			c.debug.Response("SSE", "STREAM ABORTED: EOF without [DONE] or finish_reason — likely client-side timeout (http.Client.Timeout)")
+		} else {
+			c.debug.Response("SSE", "STREAM WARNING: got finish_reason=%q but no [DONE] marker", finishReason)
 		}
 	}
 
