@@ -107,6 +107,7 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
+		CWD:         cfg.CWD,
 	}, toolRegistry, debug)
 
 	startTime := time.Now()

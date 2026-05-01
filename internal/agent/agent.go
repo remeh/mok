@@ -14,6 +14,7 @@ type AgentConfig struct {
 	Model       string
 	Temperature float32
 	MaxTokens   int
+	CWD         string
 }
 
 // Agent manages the conversation loop.
@@ -30,7 +31,7 @@ type Agent struct {
 
 // NewAgent creates a new Agent.
 func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, debug *DebugLogger) *Agent {
-	prompt := BuildSystemPrompt(&PromptConfig{})
+	prompt := BuildSystemPrompt(&PromptConfig{CWD: cfg.CWD})
 	a := &Agent{
 		client:       client,
 		config:       cfg,

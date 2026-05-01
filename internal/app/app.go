@@ -71,6 +71,7 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
+		CWD:         cfg.CWD,
 	}, toolRegistry, debug)
 
 	return &AppModel{

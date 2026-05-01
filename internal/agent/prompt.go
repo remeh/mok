@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -20,6 +21,13 @@ func BuildSystemPrompt(cfg *PromptConfig) string {
 
 	date := time.Now().Format("2006-01-02")
 
+	// Read AGENT.md if it exists
+	var agentMd string
+	agentMdPath := filepath.Join(cwd, "AGENTS.md")
+	if data, err := os.ReadFile(agentMdPath); err == nil && len(data) > 0 {
+		agentMd = "\nAGENTS.md:\n\n" + string(data)
+	}
+
 	return fmt.Sprintf(`You are an expert coding assistant. You help users by reading files,
 executing commands, editing code, and writing new files.
 
@@ -30,5 +38,5 @@ Guidelines:
 - Read files in chunks when possible
 
 Current date: %s
-Working directory: %s`, date, cwd)
+Working directory: %s%s`, date, cwd, agentMd)
 }
