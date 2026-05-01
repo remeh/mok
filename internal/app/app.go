@@ -26,6 +26,7 @@ type AppModel struct {
 	Screen    *tui.Screen
 	Agent     *agent.Agent
 	Messages  []*types.Message
+	Debug     *agent.DebugLogger
 	width     int
 	height    int
 	quitting  bool
@@ -47,8 +48,17 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	screen.SetMaxTokens(cfg.MaxContextTokens)
 	screen.SetStatusBarState(tui.StatusIdle)
 
-	// Debug is disabled in TUI mode — it breaks the terminal.
+	// Create debug logger for TUI mode (writes to debug.log file)
+	var debug *agent.DebugLogger
+	if cfg.Debug {
+		debug = agent.NewDebugLoggerFile(true, "debug.log")
+		debug.Info("APP", "Debug logging enabled, writing to debug.log")
+	}
+
 	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
+	if debug != nil {
+		client.WithDebug(debug)
+	}
 
 	// Create tool registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
@@ -61,12 +71,13 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		MaxTokens:   cfg.MaxTokens,
-	}, toolRegistry, cfg.ModelQuirks, nil)
+	}, toolRegistry, cfg.ModelQuirks, debug)
 
 	return &AppModel{
 		Config:    cfg,
 		Screen:    screen,
 		Agent:     agt,
+		Debug:     debug,
 		Messages:  make([]*types.Message, 0),
 		eventChan: make(chan agentEvent, 128),
 	}, nil
@@ -95,6 +106,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.abortAgent()
 			}
 			m.quitting = true
+			if m.Debug != nil {
+				m.Debug.Close()
+			}
 			return m, tea.Quit
 
 		case tea.KeyCtrlO:
@@ -318,6 +332,9 @@ func (m *AppModel) handleCommand(text string) tea.Cmd {
 	switch cmd {
 	case "exit", "quit":
 		m.quitting = true
+		if m.Debug != nil {
+			m.Debug.Close()
+		}
 		return tea.Quit
 	default:
 		return nil

@@ -25,6 +25,32 @@ func NewDebugLogger(enabled bool) *DebugLogger {
 	}
 }
 
+// NewDebugLoggerFile creates a debug logger that writes to the given file path.
+// The file is created or truncated on open. If enabled is false, all logging is a no-op.
+func NewDebugLoggerFile(enabled bool, path string) *DebugLogger {
+	if !enabled {
+		return &DebugLogger{
+			enabled: false,
+			out:     io.Discard,
+			start:   time.Now(),
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		// Fall back to stderr if file open fails
+		return &DebugLogger{
+			enabled: true,
+			out:     os.Stderr,
+			start:   time.Now(),
+		}
+	}
+	return &DebugLogger{
+		enabled: true,
+		out:     f,
+		start:   time.Now(),
+	}
+}
+
 // log formats and writes a debug line. Returns immediately if disabled.
 func (d *DebugLogger) log(category, msg string) {
 	if !d.enabled {
@@ -93,4 +119,13 @@ func (d *DebugLogger) Dump(category, label string, data []byte) {
 // Separator prints a visual separator for log sections.
 func (d *DebugLogger) Separator(category string) {
 	d.log(category, strings.Repeat("---", 10))
+}
+
+// Close releases any resources held by the debug logger.
+func (d *DebugLogger) Close() {
+	if d.out != nil {
+		if closer, ok := d.out.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
 }

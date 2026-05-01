@@ -131,6 +131,9 @@ func loadFromEnv(cfg *Config) error {
 	if v, ok := envMap["MODEL_QUIRKS"]; ok && v != "" {
 		cfg.ModelQuirks = strings.Split(v, ",")
 	}
+	if v, ok := envMap["DEBUG"]; ok && v == "true" {
+		cfg.Debug = true
+	}
 
 	return nil
 }
@@ -191,6 +194,9 @@ func mergeConfig(dst, src *Config) {
 	}
 	if len(src.ModelQuirks) > 0 {
 		dst.ModelQuirks = src.ModelQuirks
+	}
+	if src.Debug {
+		dst.Debug = true
 	}
 	// Temperature can be 0 intentionally, so we check a sentinel
 	// For now, if the YAML has it, it was explicitly set — we handle this
