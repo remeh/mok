@@ -82,9 +82,10 @@ func (s *Screen) SetToolName(name string) {
 	s.statusBar.SetToolName(name)
 }
 
-// Tick advances the status bar spinner animation.
+// Tick advances the status bar spinner animation and message view cursor frame.
 func (s *Screen) Tick() {
 	s.statusBar.Tick()
+	s.msgView.cursorFrame++
 }
 
 // SetStreaming sets whether the LLM is streaming.

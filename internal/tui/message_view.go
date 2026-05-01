@@ -13,11 +13,12 @@ import (
 type MessageView struct {
 	theme      Theme
 	messages   []*types.Message
-	scrollPos  int
-	width      int
-	height     int
-	visible    int // number of visible lines
-	autoScroll bool
+	scrollPos   int
+	width       int
+	height      int
+	visible     int // number of visible lines
+	autoScroll  bool
+	cursorFrame int // frame counter for blinking cursor
 }
 
 // NewMessageView creates a new MessageView.
@@ -110,7 +111,7 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 
 	switch msg.Type {
 	case types.MsgToolCall:
-		content := fmt.Sprintf("%s %s(%s)", v.messageLabel(msg), msg.ToolName, truncate(msg.ToolArgs, 80))
+		content := fmt.Sprintf("%s %s(%s)", v.messageLabelText(msg), msg.ToolName, truncate(msg.ToolArgs, 80))
 		wrapped := wordwrap.String(content, v.width-2)
 		lines += len(strings.Split(wrapped, "\n"))
 	case types.MsgToolResult:
@@ -120,7 +121,7 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 		} else {
 			content := msg.Content
 			if content != "" {
-				text := v.messageLabel(msg) + " " + content
+				text := v.messageLabelText(msg) + " " + content
 				wrapped := wordwrap.String(text, v.width-2)
 				lines += len(strings.Split(wrapped, "\n"))
 			} else {
@@ -130,11 +131,15 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 	default:
 		content := msg.Content
 		if content != "" || msg.ThinkingText != "" {
-			text := v.messageLabel(msg) + " " + content
+			text := v.messageLabelText(msg) + " " + content
 			wrapped := wordwrap.String(text, v.width-2)
 			lines += len(strings.Split(wrapped, "\n"))
 		} else {
 			lines = 1
+		}
+		// User messages get 2 extra lines for vertical padding (top + bottom)
+		if msg.Type == types.MsgUser {
+			lines += 2
 		}
 	}
 
@@ -149,25 +154,25 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// messageLabel returns the styled label prefix for a message.
-func (v *MessageView) messageLabel(msg *types.Message) string {
-	switch msg.Type {
-	case types.MsgUser:
-		return v.theme.User.Render("You")
-	case types.MsgAssistant:
-		return v.theme.Assistant.Render("Assistant")
-	case types.MsgToolCall:
-		return v.theme.ToolCall.Render("tool_call")
-	case types.MsgToolResult:
-		if msg.IsError {
-			return v.theme.Error.Render("tool_error")
-		}
-		return v.theme.ToolResult.Render("tool_result")
-	case types.MsgSystem:
-		return v.theme.Dim.Render("system")
-	default:
-		return v.theme.Dim.Render("unknown")
-	}
+// messageLabelText returns the plain text label for a message (no styling).
+func (v *MessageView) messageLabelText(msg *types.Message) string {
+        switch msg.Type {
+        case types.MsgUser:
+                return ""
+        case types.MsgAssistant:
+                return ""
+        case types.MsgToolCall:
+                return "tool_call"
+        case types.MsgToolResult:
+                if msg.IsError {
+                        return "tool_error"
+                }
+                return "tool_result"
+        case types.MsgSystem:
+                return "system"
+        default:
+                return "unknown"
+        }
 }
 
 // messageStyle returns the appropriate style for a message's content.
@@ -234,7 +239,6 @@ func (v *MessageView) Render() string {
 
 // renderMessage renders a single message to wrapped lines.
 func (v *MessageView) renderMessage(msg *types.Message) []string {
-	label := v.messageLabel(msg)
 	style := v.messageStyle(msg)
 
 	var lines []string
@@ -261,18 +265,39 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 		content = msg.Content
 	}
 
-	text := label + " " + content
+	// Use plain label text for wrapping, then apply style uniformly to all lines
+	labelText := v.messageLabelText(msg)
+	text := labelText + " " + content
 	wrapped := wordwrap.String(text, v.width-2)
 
+	// Set style width so background fills the full line
+	style = style.Width(v.width - 2)
+
 	contentLines := strings.Split(wrapped, "\n")
+
+	// User messages: add vertical padding (empty line above and below with background)
+	if msg.Type == types.MsgUser {
+		lines = append(lines, style.Render(strings.Repeat(" ", v.width-2)))
+	}
+
 	for _, line := range contentLines {
 		lines = append(lines, style.Render(line))
 	}
 
-	// If streaming, add a cursor indicator
+	// User messages: bottom padding line
+	if msg.Type == types.MsgUser {
+		lines = append(lines, style.Render(strings.Repeat(" ", v.width-2)))
+	}
+
+	// If streaming, add a blinking cursor indicator
 	if msg.Streaming {
-		cursorLine := style.Render("▌")
-		lines = append(lines, cursorLine)
+		// Blink: 400ms on, 400ms off (4 frames each at 100ms/tick)
+		if v.cursorFrame%8 < 4 {
+			cursorLine := style.Render("▌")
+			lines = append(lines, cursorLine)
+		} else {
+			lines = append(lines, "")
+		}
 	}
 
 	return lines

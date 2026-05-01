@@ -6,6 +6,7 @@ import "github.com/charmbracelet/lipgloss"
 type Theme struct {
 	User           lipgloss.Style
 	Assistant      lipgloss.Style
+	AssistantLabel lipgloss.Style
 	ToolCall       lipgloss.Style
 	ToolResult     lipgloss.Style
 	ToolResultCollapsed lipgloss.Style
@@ -24,11 +25,12 @@ type Theme struct {
 // DefaultTheme returns the default color scheme.
 func DefaultTheme() Theme {
 	return Theme{
-		User:              lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Bold(true),
-		Assistant:         lipgloss.NewStyle().Foreground(lipgloss.Color("210")),
-		ToolCall:          lipgloss.NewStyle().Foreground(lipgloss.Color("136")).Italic(true),
-		ToolResult:        lipgloss.NewStyle().Foreground(lipgloss.Color("178")),
-		ToolResultCollapsed: lipgloss.NewStyle().Foreground(lipgloss.Color("178")).Italic(true),
+		User:              lipgloss.NewStyle().Background(lipgloss.Color("236")),
+		Assistant:         lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
+		AssistantLabel:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),
+		ToolCall:          lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true),
+		ToolResult:        lipgloss.NewStyle().Foreground(lipgloss.Color("81")),
+		ToolResultCollapsed: lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Italic(true),
 		Error:             lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true),
 		StatusBar:         lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("144")),
 		StatusBarActive:   lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("226")).Bold(true),

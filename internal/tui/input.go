@@ -186,9 +186,10 @@ func (i *InputArea) Render() string {
 
 	// Render with cursor
 	cursorChar := "▌"
-	cursorStyle := i.theme.InputPrefix.Foreground(lipgloss.Color("144"))
+	textStyle := i.theme.InputPrefix.Foreground(lipgloss.Color("144"))
+	cursorStyle := textStyle.Copy()
 
-	inputLine := prefix + " " + before + cursorStyle.Render(cursorChar) + after
+	inputLine := prefix + " " + textStyle.Render(before) + cursorStyle.Render(cursorChar) + textStyle.Render(after)
 
 	// Pad to width
 	renderedWidth := lipgloss.Width(inputLine)
