@@ -11,21 +11,21 @@ import (
 
 // messageLineRange maps a message index to its line range in the rendered output.
 type messageLineRange struct {
-	msgIndex int
+	msgIndex  int
 	startLine int
 	endLine   int // exclusive
 }
 
 // MessageView renders the conversation message list.
 type MessageView struct {
-	theme      Theme
-	messages   []*types.Message
+	theme       Theme
+	messages    []*types.Message
 	scrollPos   int
 	width       int
 	height      int
 	visible     int // number of visible lines
 	autoScroll  bool
-	cursorFrame int // frame counter for blinking cursor
+	cursorFrame int                // frame counter for blinking cursor
 	lineRanges  []messageLineRange // built during Render
 }
 
@@ -124,7 +124,7 @@ func (v *MessageView) messageLineCount(msg *types.Message) int {
 
 	switch msg.Type {
 	case types.MsgToolCall:
-		content := fmt.Sprintf("%s %s(%s)", v.messageLabelText(msg), msg.ToolName, truncate(msg.ToolArgs, 80))
+		content := fmt.Sprintf("%s %s", v.messageLabelText(msg), truncate(msg.ToolArgs, 80))
 		wrapped := wordwrap.String(content, v.width-2)
 		lines += len(strings.Split(wrapped, "\n"))
 	case types.MsgToolResult:
@@ -169,23 +169,23 @@ func truncate(s string, maxLen int) string {
 
 // messageLabelText returns the plain text label for a message (no styling).
 func (v *MessageView) messageLabelText(msg *types.Message) string {
-        switch msg.Type {
-        case types.MsgUser:
-                return ""
-        case types.MsgAssistant:
-                return ""
-        case types.MsgToolCall:
-                return "tool_call"
-        case types.MsgToolResult:
-                if msg.IsError {
-                        return "tool_error"
-                }
-                return "tool_result"
-        case types.MsgSystem:
-                return "system"
-        default:
-                return "unknown"
-        }
+	switch msg.Type {
+	case types.MsgUser:
+		return ""
+	case types.MsgAssistant:
+		return ""
+	case types.MsgToolCall:
+		return "[" + msg.ToolName + "]"
+	case types.MsgToolResult:
+		if msg.IsError {
+			return "[" + msg.ToolName + "]"
+		}
+		return "[" + msg.ToolName + "]"
+	case types.MsgSystem:
+		return "system"
+	default:
+		return "unknown"
+	}
 }
 
 // messageStyle returns the appropriate style for a message's content.
@@ -207,6 +207,21 @@ func (v *MessageView) messageStyle(msg *types.Message) lipgloss.Style {
 		return v.theme.ToolResult
 	case types.MsgSystem:
 		return v.theme.Dim
+	default:
+		return lipgloss.NewStyle()
+	}
+}
+
+// tagStyle returns the style for the tool name tag (e.g. [read]).
+func (v *MessageView) tagStyle(msg *types.Message) lipgloss.Style {
+	switch msg.Type {
+	case types.MsgToolCall:
+		return v.theme.ToolCall
+	case types.MsgToolResult:
+		if msg.IsError {
+			return v.theme.Error
+		}
+		return v.theme.ToolResult
 	default:
 		return lipgloss.NewStyle()
 	}
@@ -280,12 +295,13 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 	var content string
 	switch msg.Type {
 	case types.MsgToolCall:
-		content = fmt.Sprintf("%s(%s)", msg.ToolName, truncate(msg.ToolArgs, 80))
+		content = truncate(msg.ToolArgs, 80)
 	case types.MsgToolResult:
 		if msg.Collapsed && msg.Summary != "" {
 			// Show collapsed summary with expand hint
-			content = fmt.Sprintf("[%s] %s  (click to expand)", msg.ToolName, msg.Summary)
-			lines = append(lines, style.Render("  "+content))
+			tag := v.tagStyle(msg).Render("[" + msg.ToolName + "]")
+			rest := v.theme.Dim.Render(" " + msg.Summary + "  (click to expand)")
+			lines = append(lines, "  "+tag+rest)
 			return lines
 		}
 		content = msg.Content
@@ -293,23 +309,48 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 		content = msg.Content
 	}
 
+	// User messages: top padding line (empty line with background)
+	if msg.Type == types.MsgUser {
+		style = style.Width(v.width - 2)
+		lines = append(lines, style.Render(strings.Repeat(" ", v.width-2)))
+	}
+
 	// Use plain label text for wrapping, then apply style uniformly to all lines
 	labelText := v.messageLabelText(msg)
 	text := labelText + " " + content
 	wrapped := wordwrap.String(text, v.width-2)
 
-	// Set style width so background fills the full line
-	style = style.Width(v.width - 2)
+	// For tool messages, style only the tag, not the full line
+	if msg.Type == types.MsgToolCall || msg.Type == types.MsgToolResult {
+		tag := v.messageLabelText(msg)
+		tagStyler := v.tagStyle(msg)
+		var contentStyler lipgloss.Style
+		if msg.Type == types.MsgToolCall {
+			contentStyler = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+		} else {
+			contentStyler = v.theme.Dim
+		}
 
-	contentLines := strings.Split(wrapped, "\n")
+		contentLines := strings.Split(wrapped, "\n")
+		for i, line := range contentLines {
+			if i == 0 && strings.HasPrefix(line, tag) {
+				// First line: style the tag, dim the rest
+				rest := line[len(tag):]
+				styledLine := tagStyler.Render(tag) + contentStyler.Render(rest)
+				lines = append(lines, styledLine)
+			} else {
+				// Continuation lines: all dim
+				lines = append(lines, contentStyler.Render(line))
+			}
+		}
+	} else {
+		style = style.Width(v.width - 2)
+		contentLines := strings.Split(wrapped, "\n")
 
-	// User messages: add vertical padding (empty line above and below with background)
-	if msg.Type == types.MsgUser {
-		lines = append(lines, style.Render(strings.Repeat(" ", v.width-2)))
-	}
+		for _, line := range contentLines {
+			lines = append(lines, style.Render(line))
+		}
 
-	for _, line := range contentLines {
-		lines = append(lines, style.Render(line))
 	}
 
 	// User messages: bottom padding line
