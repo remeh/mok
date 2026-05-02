@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +20,19 @@ type Client struct {
 	BearerToken string
 	httpClient  *http.Client
 	debug       DebugLogger
+}
+
+// clientID is a random identifier generated once per process startup.
+// It is sent as the X-Client-ID header for load-balancer session affinity.
+var clientID string
+
+func init() {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback: should never happen in practice
+		b = []byte("0000000000000000")
+	}
+	clientID = hex.EncodeToString(b)
 }
 
 // NewClient creates a new LLM client.
@@ -127,6 +142,7 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 	if c.BearerToken != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
+	httpReq.Header.Set("X-Client-ID", clientID)
 
 	c.debug.Request("HTTP", "POST %s", url)
 	c.debug.Request("HTTP", "Headers: Content-Type=application/json, Authorization=[REDACTED]")
