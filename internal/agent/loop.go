@@ -209,6 +209,9 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 			thinkingText.String(),
 			debug,
 		)
+		// SanitizeContent also strips XML tool call markup from the content.
+		// This is safe because ExtractXMLToolCalls has already parsed them
+		// into toolCallOrder above.
 		content, _ = quirks.SanitizeContent(content, debug)
 
 		// If thinking was promoted to content, emit it as a text delta

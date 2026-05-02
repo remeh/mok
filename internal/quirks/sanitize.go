@@ -13,6 +13,7 @@ var reasoningTags = []string{
 	"think", "thinking", "thought", "Thought",
 	"reasoning", "analysis", "reflection",
 	"inner_thoughts", "scratchpad", "chain_of_thought",
+	"tool_call",
 }
 
 // SanitizeContent strips leaked reasoning/thinking XML tag markers from text,
@@ -26,6 +27,7 @@ func SanitizeContent(s string, debug llm.DebugLogger) (string, bool) {
 		s = strings.ReplaceAll(s, "</"+tag+">", "")
 	}
 
+	s = xmlToolCallPattern.ReplaceAllString(s, "")
 	s = strings.TrimSpace(s)
 
 	changed := s != original
