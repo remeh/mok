@@ -33,6 +33,7 @@ func (s *Screen) SetDimensions(w, h int) {
 	s.width = w
 	s.height = h
 
+	// Reserve 2 lines for input + status bar (base case)
 	contentHeight := h - 2
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -42,6 +43,25 @@ func (s *Screen) SetDimensions(w, h int) {
 	s.msgView.SetReservedLines(2)
 	s.inputArea.SetWidth(w)
 	s.statusBar.SetWidth(w)
+}
+
+// adjustMessageViewHeight adjusts the message view height based on whether
+// the scroll indicator is shown. Called during Render to handle dynamic layout.
+func (s *Screen) adjustMessageViewHeight() {
+	contentHeight := s.height - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	// If scrolled up, we need an extra line for the scroll indicator
+	if s.msgView.IsScrolledUp() {
+		contentHeight--
+	}
+
+	// Only adjust if height changed to avoid unnecessary reinitialization
+	if s.msgView.height != contentHeight {
+		s.msgView.SetDimensions(s.width, contentHeight)
+	}
 }
 
 // SetMessages updates the message view.
@@ -104,18 +124,23 @@ func (s *Screen) SetStreaming(streaming bool) {
 
 // Render returns the complete screen as a string.
 func (s *Screen) Render() string {
+	// Adjust message view height based on scroll indicator visibility
+	s.adjustMessageViewHeight()
+
 	msgLines := s.msgView.Render()
 
-	var inputLine string
+	var bottomLines string
 	if s.msgView.IsScrolledUp() {
-		inputLine = s.RenderScrollIndicator()
+		// Show scroll indicator above the input area
+		indicator := s.RenderScrollIndicator()
+		bottomLines = indicator + "\n" + s.inputArea.Render()
 	} else {
-		inputLine = s.inputArea.Render()
+		bottomLines = s.inputArea.Render()
 	}
 
 	statusLine := s.statusBar.Render()
 
-	parts := []string{msgLines, inputLine, statusLine}
+	parts := []string{msgLines, bottomLines, statusLine}
 	return strings.Join(parts, "\n")
 }
 
