@@ -18,16 +18,17 @@ type messageLineRange struct {
 
 // MessageView renders the conversation message list.
 type MessageView struct {
-	theme       Theme
-	messages    []*types.Message
-	scrollPos   int
-	width       int
-	height      int
-	visible     int // number of visible lines
-	autoScroll  bool
-	cursorFrame int                // frame counter for blinking cursor
-	lineRanges  []messageLineRange // built during Render
-	mdRenderer  *markdownRenderer  // lazily initialized markdown renderer
+	theme         Theme
+	messages      []*types.Message
+	scrollPos     int
+	width         int
+	height        int
+	visible       int // number of visible lines
+	autoScroll    bool
+	cursorFrame   int                // frame counter for blinking cursor
+	lineRanges    []messageLineRange // built during Render
+	mdRenderer    *markdownRenderer  // lazily initialized markdown renderer
+	reservedLines int                // lines reserved below the message view (input + status bar)
 }
 
 // NewMessageView creates a new MessageView.
@@ -47,6 +48,12 @@ func (v *MessageView) SetMessages(messages []*types.Message) {
 func (v *MessageView) AddMessage(msg *types.Message) {
 	v.messages = append(v.messages, msg)
 	v.autoScroll = true
+}
+
+// SetReservedLines sets the number of lines reserved below the message view
+// (typically input line + status bar = 2).
+func (v *MessageView) SetReservedLines(n int) {
+	v.reservedLines = n
 }
 
 // SetDimensions sets the viewport dimensions.
@@ -244,8 +251,12 @@ func (v *MessageView) tagStyle(msg *types.Message) lipgloss.Style {
 // Render returns the message view as a string.
 func (v *MessageView) Render() string {
 	if len(v.messages) == 0 {
+		fullHeight := v.height + v.reservedLines
 		centered := v.theme.Dim.Render("No messages yet. Type something!")
-		return StringsRepeat("\n", max(0, v.height/2-1)) + centered
+		centerLine := fullHeight / 2 - 1
+		topPadding := StringsRepeat("\n", max(0, centerLine))
+		bottomPadding := StringsRepeat("\n", max(0, v.height-centerLine-1))
+		return topPadding + centered + bottomPadding
 	}
 
 	// Build all lines and track line ranges per message

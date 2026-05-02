@@ -39,6 +39,7 @@ func (s *Screen) SetDimensions(w, h int) {
 	}
 
 	s.msgView.SetDimensions(w, contentHeight)
+	s.msgView.SetReservedLines(2)
 	s.inputArea.SetWidth(w)
 	s.statusBar.SetWidth(w)
 }
