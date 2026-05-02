@@ -27,6 +27,7 @@ type MessageView struct {
 	autoScroll  bool
 	cursorFrame int                // frame counter for blinking cursor
 	lineRanges  []messageLineRange // built during Render
+	mdRenderer  *markdownRenderer  // lazily initialized markdown renderer
 }
 
 // NewMessageView creates a new MessageView.
@@ -53,6 +54,8 @@ func (v *MessageView) SetDimensions(w, h int) {
 	v.width = w
 	v.height = h
 	v.visible = h
+	// Reset renderer so it uses the new width for wordwrap
+	v.mdRenderer = nil
 }
 
 // ScrollUp moves the scroll position up by one line.
@@ -318,6 +321,22 @@ func (v *MessageView) renderMessage(msg *types.Message) []string {
 		content = msg.Content
 	default:
 		content = msg.Content
+	}
+
+	// Markdown rendering for assistant messages (not during streaming)
+	if msg.Type == types.MsgAssistant && content != "" && !msg.Streaming {
+		// Lazily initialize renderer
+		if v.mdRenderer == nil {
+			if r, err := newMarkdownRenderer(v.width); err == nil {
+				v.mdRenderer = r
+			}
+		}
+		if v.mdRenderer != nil {
+			if styled, err := v.mdRenderer.Render(content); err == nil {
+				content = styled
+			}
+			// On error, fall through to plain rendering
+		}
 	}
 
 	// User messages: top padding line (empty line with background)

@@ -67,7 +67,6 @@ func ExtractXMLToolCalls(text string, debug llm.DebugLogger) ([]QwenXMLToolCall,
 	return result, len(result) > 0
 }
 
-// XMLToolCallArgsToJSON converts XML tool call args map to a JSON string.
 func XMLToolCallArgsToJSON(args map[string]string) string {
 	var sb strings.Builder
 	sb.WriteString("{")
