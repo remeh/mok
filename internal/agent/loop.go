@@ -204,12 +204,18 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		// Some models are not sending any content after they're very
 		// last thought, let's use the thinking data as content instead.
 		// Also, some sanitizing to remove possible leaky tags.
-		content, _ := quirks.UseThinkingAsContent(
+		content, usedThinking := quirks.UseThinkingAsContent(
 			assistantText.String(),
 			thinkingText.String(),
 			debug,
 		)
 		content, _ = quirks.SanitizeContent(content, debug)
+
+		// If thinking was promoted to content, emit it as a text delta
+		// so the TUI renders it as visible content (not just collapsed thinking).
+		if usedThinking {
+			events <- EventTextDelta{Text: content}
+		}
 
 		// Save assistant message to history
 		assistantMsg := llm.Message{
