@@ -183,6 +183,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 
 	var finishReason string
 	receivedDone := false
+	emittedDone := false
 	if c.debug != nil {
 		c.debug.Response("SSE", "Stream parsing started")
 	}
@@ -315,7 +316,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 	}
 
 	// Emit final done event if we haven't already (some backends omit usage chunk)
-	if finishReason != "" {
+	if finishReason != "" && !emittedDone {
 		events <- StreamEvent{
 			Type: "done",
 			Stop: finishReason,

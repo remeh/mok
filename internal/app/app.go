@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -29,7 +30,8 @@ type AppModel struct {
 	Debug     *agent.DebugLogger
 	width     int
 	height    int
-	quitting  bool
+	editorTempFile string // path to temp file used by Ctrl-G editor
+	quitting       bool
 
 	// Agent event handling
 	agentRunning  bool
@@ -115,6 +117,15 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEsc:
 			if m.agentRunning {
 				m.abortAgent()
+			}
+			break
+
+		case tea.KeyCtrlG:
+			if m.agentRunning {
+				break
+			}
+			if cmd := m.openEditor(); cmd != nil {
+				return m, cmd
 			}
 			break
 
@@ -321,6 +332,46 @@ func (m *AppModel) expandAllToolResults() {
 			msg.Collapsed = false
 		}
 	}
+}
+
+// openEditor creates a temp file with the current input, launches $EDITOR
+// (falling back to vi), and on exit reads the file back into the input area.
+func (m *AppModel) openEditor() tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+
+	tmp, err := os.CreateTemp("", "mmok-prompt-*.txt")
+	if err != nil {
+		return nil
+	}
+	if _, err := tmp.WriteString(m.Screen.GetInputArea().Value()); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return nil
+	}
+	tmp.Close()
+
+	m.editorTempFile = tmp.Name()
+
+	cmd := exec.Command(editor, tmp.Name())
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		defer func() {
+			os.Remove(tmp.Name())
+			m.editorTempFile = ""
+		}()
+
+		if err != nil {
+			return nil
+		}
+
+		content, readErr := os.ReadFile(tmp.Name())
+		if readErr == nil {
+			m.Screen.GetInputArea().SetValue(string(content))
+		}
+		return nil
+	})
 }
 
 // readAgentEvent is a tea.Cmd that reads the next event from the bridge channel.
