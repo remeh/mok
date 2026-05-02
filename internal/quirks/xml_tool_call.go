@@ -17,7 +17,7 @@ import (
 var xmlToolCallPattern = regexp.MustCompile(`(?s)<function=([^<]+)>(.*?)</function>`)
 
 // paramPattern matches individual parameters within an XML tool call.
-var paramPattern = regexp.MustCompile(`<parameter=([^>]+)>(.*?)</parameter>`)
+var paramPattern = regexp.MustCompile(`(?s)<parameter=([^>]+)>(.*?)</parameter>`)
 
 // QwenXMLToolCall represents a parsed XML-style tool call.
 type QwenXMLToolCall struct {

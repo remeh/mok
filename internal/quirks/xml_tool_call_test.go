@@ -130,6 +130,42 @@ func TestExtractXMLToolCalls_WithSurroundingText(t *testing.T) {
 	}
 }
 
+func TestExtractXMLToolCalls_MultilineParams(t *testing.T) {
+	input := "<tool_call>\n" +
+		"<function=read>\n" +
+		"<parameter=limit>\n" +
+		"50\n" +
+		"</parameter>\n" +
+		"<parameter=offset>\n" +
+		"1\n" +
+		"</parameter>\n" +
+		"<parameter=path>\n" +
+		"/Users/remy/docs/code/mmok/internal/app/app.go\n" +
+		"</parameter>\n" +
+		"</function>\n" +
+		"</tool_call>"
+
+	result, found := ExtractXMLToolCalls(input, llm.NopLogger{})
+	if !found {
+		t.Fatal("expected to find XML tool call")
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(result))
+	}
+	if result[0].Name != "read" {
+		t.Errorf("expected name 'read', got %q", result[0].Name)
+	}
+	if result[0].Args["path"] != "/Users/remy/docs/code/mmok/internal/app/app.go" {
+		t.Errorf("unexpected path: %q", result[0].Args["path"])
+	}
+	if result[0].Args["offset"] != "1" {
+		t.Errorf("unexpected offset: %q", result[0].Args["offset"])
+	}
+	if result[0].Args["limit"] != "50" {
+		t.Errorf("unexpected limit: %q", result[0].Args["limit"])
+	}
+}
+
 func TestXMLToolCallArgsToJSON(t *testing.T) {
 	args := map[string]string{
 		"path":   "/some/file.go",
