@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"unicode/utf8"
+
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -71,7 +73,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		if i.historyIdx < len(i.history)-1 {
 			i.historyIdx++
 			i.value = i.history[len(i.history)-1-i.historyIdx]
-			i.cursorPos = len(i.value)
+			i.cursorPos = utf8.RuneCountInString(i.value)
 		}
 		return true
 
@@ -79,7 +81,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		if i.historyIdx > 0 {
 			i.historyIdx--
 			i.value = i.history[len(i.history)-1-i.historyIdx]
-			i.cursorPos = len(i.value)
+			i.cursorPos = utf8.RuneCountInString(i.value)
 		} else {
 			i.historyIdx = -1
 			i.value = ""
@@ -89,14 +91,16 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 
 	case tea.KeyBackspace:
 		if i.cursorPos > 0 {
-			i.value = i.value[:i.cursorPos-1] + i.value[i.cursorPos:]
+			runes := []rune(i.value)
+			i.value = string(runes[:i.cursorPos-1]) + string(runes[i.cursorPos:])
 			i.cursorPos--
 		}
 		return true
 
 	case tea.KeyDelete:
-		if i.cursorPos < len(i.value) {
-			i.value = i.value[:i.cursorPos] + i.value[i.cursorPos+1:]
+		if i.cursorPos < utf8.RuneCountInString(i.value) {
+			runes := []rune(i.value)
+			i.value = string(runes[:i.cursorPos]) + string(runes[i.cursorPos+1:])
 		}
 		return true
 
@@ -107,7 +111,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		return true
 
 	case tea.KeyRight:
-		if i.cursorPos < len(i.value) {
+		if i.cursorPos < utf8.RuneCountInString(i.value) {
 			i.cursorPos++
 		}
 		return true
@@ -117,18 +121,19 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		return true
 
 	case tea.KeyCtrlE: // End
-		i.cursorPos = len(i.value)
+		i.cursorPos = utf8.RuneCountInString(i.value)
 		return true
 
 	case tea.KeyCtrlW: // Delete word backward
+		runes := []rune(i.value)
 		start := i.cursorPos
-		for start > 0 && i.value[start-1] == ' ' {
+		for start > 0 && runes[start-1] == ' ' {
 			start--
 		}
-		for start > 0 && i.value[start-1] != ' ' {
+		for start > 0 && runes[start-1] != ' ' {
 			start--
 		}
-		i.value = i.value[:start] + i.value[i.cursorPos:]
+		i.value = string(runes[:start]) + string(runes[i.cursorPos:])
 		i.cursorPos = start
 		return true
 
@@ -146,8 +151,9 @@ func (i *InputArea) HandleRune(r rune) {
 	if !i.focused {
 		return
 	}
+	runes := []rune(i.value)
 	insertPos := i.cursorPos
-	i.value = i.value[:insertPos] + string(r) + i.value[insertPos:]
+	i.value = string(runes[:insertPos]) + string(r) + string(runes[insertPos:])
 	i.cursorPos++
 }
 
@@ -162,16 +168,23 @@ func (i *InputArea) Render() string {
 	}
 
 	// Clamp cursorPos to valid range (can drift out of sync e.g. after SetValue)
-	if i.cursorPos > len(i.value) {
-		i.cursorPos = len(i.value)
+	if i.cursorPos > utf8.RuneCountInString(i.value) {
+		i.cursorPos = utf8.RuneCountInString(i.value)
 	}
 	if i.cursorPos < 0 {
 		i.cursorPos = 0
 	}
 
-	// Split value into before/after cursor
-	before := i.value[:i.cursorPos]
-	after := i.value[i.cursorPos:]
+	// Split value into before/after cursor using runes
+	runes := []rune(i.value)
+	var before, after string
+	if i.cursorPos < len(runes) {
+		before = string(runes[:i.cursorPos])
+		after = string(runes[i.cursorPos:])
+	} else {
+		before = string(runes)
+		after = ""
+	}
 
 	// Truncate if too wide
 	maxBefore := availableWidth - lipgloss.Width(after) - 1
