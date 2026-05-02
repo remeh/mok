@@ -39,6 +39,11 @@ internal/llm/
   accumulator.go            — Tool call accumulator (map+slice, index/ID matching)
   json_repair.go            — JSON repair (control chars, invalid escapes, unclosed braces)
   tokenizer.go              — Token estimation + ContextTracker
+internal/quirks/
+  empty_response.go         — Detects empty responses (stop with no content)
+  sanitize.go               — Strips leaked reasoning/thinking XML tags
+  thinking.go               — Uses thinking as content when content is empty
+  xml_tool_call.go          — Extracts XML-style tool calls (e.g. Qwen \u2573<function>...\u2581)
 internal/tools/
   tool.go                   — Tool interface + ToolDefinition + Registry
   validator.go              — ValidateAndCoerce with type coercion
@@ -95,6 +100,7 @@ File locations searched: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.
 - System prompt: includes current date and working directory
 - LLM client: OpenAI-compatible SSE streaming, context-aware abort via `http.NewRequestWithContext`, handles `reasoning_content` for thinking tokens
 - Tool call accumulation: map+slice with index-first matching, ID fallback for Gemma quirks
+- XML tool call quirk: detects and converts XML-style tool calls (e.g. Qwen `\u2573<function=name>...\u2581`) in thinking/content when standard JSON tool_calls are absent
 - JSON repair: three-layer fallback (direct parse → repair control chars/escapes → close unclosed braces)
 - Schema validation: `ValidateAndCoerce` with type coercion (string→number, string→boolean)
 - Built-in tools: read (offset/limit/truncation, images), write (auto-create dirs), edit (multi-edit, unified diff), bash (timeout, output truncation)

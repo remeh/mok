@@ -197,6 +197,46 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		// Reset empty retries on successful response
 		emptyRetries = 0
 
+		// Quirk: some models (e.g. Qwen) emit XML-style tool calls in
+		// thinking/content instead of proper JSON tool_calls.
+		// Only scan when the standard mechanism produced nothing.
+		if len(toolCallOrder) == 0 && (thinkingText.Len() > 0 || assistantText.Len() > 0) {
+			var xmlTCs []quirks.QwenXMLToolCall
+			var found bool
+
+			// Check thinking text first (XML tool calls often appear here)
+			if thinkingText.Len() > 0 {
+				xmlTCs, found = quirks.ExtractXMLToolCalls(thinkingText.String(), debug)
+			}
+
+			// If not found in thinking, check content
+			if !found && assistantText.Len() > 0 {
+				xmlTCs, found = quirks.ExtractXMLToolCalls(assistantText.String(), debug)
+			}
+
+			if found && len(xmlTCs) > 0 {
+				for i, xmlTC := range xmlTCs {
+					tc := &llm.PartialTC{
+						ID:      fmt.Sprintf("xml-call-%d", i),
+						Name:    xmlTC.Name,
+						RawArgs: quirks.XMLToolCallArgsToJSON(xmlTC.Args),
+					}
+					toolCallOrder = append(toolCallOrder, tc)
+
+					events <- EventToolCallStart{
+						ToolCallID: tc.ID,
+						Name:       tc.Name,
+						RawArgs:    tc.RawArgs,
+					}
+
+					if debug != nil {
+						debug.Event("QUIRK", "xml-tool-call: converted %s with args %s",
+							tc.Name, tc.RawArgs)
+					}
+				}
+			}
+		}
+
 		// Some models are not sending any content after they're very
 		// last thought, let's use the thinking data as content instead.
 		// Also, some sanitizing to remove possible leaky tags.
@@ -213,8 +253,8 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 			Content: content,
 		}
 
-		// If stop reason is tool_calls, include tool calls and execute them
-		if stopReason == "tool_calls" && len(toolCallOrder) > 0 {
+		// If we have tool calls (from JSON or XML quirk), execute them
+		if len(toolCallOrder) > 0 {
 			assistantMsg.ToolCalls = llm.ToAPIToolCalls(toolCallOrder)
 			a.messages = append(a.messages, assistantMsg)
 			a.tracker.AddMessage(assistantMsg)
