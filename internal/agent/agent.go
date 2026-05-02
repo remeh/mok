@@ -41,19 +41,17 @@ func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry,
 		systemPrompt: prompt,
 		debug:        debug,
 	}
-	if debug != nil {
-		debug.Info("AGENT", "Creating agent with model=%s", cfg.Model)
-		if toolRegistry != nil {
-			debug.Tool("TOOLS", "Registry initialized with %d tools: %s",
-				len(toolRegistry.All()),
-				func() string {
-					names := make([]string, 0, len(toolRegistry.All()))
-					for _, t := range toolRegistry.All() {
-						names = append(names, t.Definition().Name)
-					}
-					return strings.Join(names, ", ")
-				}())
-		}
+	debug.Info("AGENT", "Creating agent with model=%s", cfg.Model)
+	if toolRegistry != nil {
+		debug.Tool("TOOLS", "Registry initialized with %d tools: %s",
+			len(toolRegistry.All()),
+			func() string {
+				names := make([]string, 0, len(toolRegistry.All()))
+				for _, t := range toolRegistry.All() {
+					names = append(names, t.Definition().Name)
+				}
+				return strings.Join(names, ", ")
+			}())
 	}
 	return a
 }

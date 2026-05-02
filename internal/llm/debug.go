@@ -12,3 +12,15 @@ type DebugLogger interface {
 	JSON(category, label string, v any)
 	Dump(category, label string, data []byte)
 }
+
+// NopLogger is a no-op implementation of DebugLogger.
+type NopLogger struct{}
+
+func (NopLogger) Debug(string, string, ...any)    {}
+func (NopLogger) Info(string, string, ...any)     {}
+func (NopLogger) Request(string, string, ...any)  {}
+func (NopLogger) Response(string, string, ...any) {}
+func (NopLogger) Event(string, string, ...any)    {}
+func (NopLogger) Tool(string, string, ...any)     {}
+func (NopLogger) JSON(string, string, any)        {}
+func (NopLogger) Dump(string, string, []byte)     {}

@@ -28,6 +28,7 @@ func NewClient(baseURL, bearerToken string) *Client {
 		httpClient: &http.Client{
 			Timeout: 1 * time.Hour,
 		},
+		debug: NopLogger{},
 	}
 }
 
@@ -127,11 +128,9 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 		httpReq.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
 
-	if c.debug != nil {
-		c.debug.Request("HTTP", "POST %s", url)
-		c.debug.Request("HTTP", "Headers: Content-Type=application/json, Authorization=[REDACTED]")
-		c.debug.JSON("HTTP", "Request body", c.buildRequestBody(req))
-	}
+	c.debug.Request("HTTP", "POST %s", url)
+	c.debug.Request("HTTP", "Headers: Content-Type=application/json, Authorization=[REDACTED]")
+	c.debug.JSON("HTTP", "Request body", c.buildRequestBody(req))
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -141,15 +140,11 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if c.debug != nil {
-			c.debug.Response("HTTP", "Error response: %s, body: %s", resp.Status, string(errBody))
-		}
+		c.debug.Response("HTTP", "Error response: %s, body: %s", resp.Status, string(errBody))
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
 	}
 
-	if c.debug != nil {
-		c.debug.Response("HTTP", "Response: %s", resp.Status)
-	}
+	c.debug.Response("HTTP", "Response: %s", resp.Status)
 
 	events := make(chan StreamEvent, 64)
 	go c.parseStream(resp.Body, events)
@@ -184,9 +179,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 	var finishReason string
 	receivedDone := false
 	emittedDone := false
-	if c.debug != nil {
-		c.debug.Response("SSE", "Stream parsing started")
-	}
+	c.debug.Response("SSE", "Stream parsing started")
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -200,9 +193,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			receivedDone = true
-			if c.debug != nil {
-				c.debug.Response("SSE", "[DONE] received, ending stream")
-			}
+			c.debug.Response("SSE", "[DONE] received, ending stream")
 			break
 		}
 
@@ -221,10 +212,8 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 						Usage: &usage,
 						Stop:  finishReason,
 					}
-					if c.debug != nil {
-						c.debug.Response("SSE", "Usage: prompt=%d completion=%d total=%d",
-							usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
-					}
+					c.debug.Response("SSE", "Usage: prompt=%d completion=%d total=%d",
+						usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
 				}
 			}
 			continue
@@ -294,10 +283,8 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 							Type:     "tool_call",
 							ToolCall: partial,
 						}
-						if c.debug != nil {
-							c.debug.Event("SSE", "tool_call: index=%v id=%s name=%s args=%q",
-								partial.Index, partial.ID, partial.Name, partial.RawArgs)
-						}
+						c.debug.Event("SSE", "tool_call: index=%v id=%s name=%s args=%q",
+							partial.Index, partial.ID, partial.Name, partial.RawArgs)
 					}
 				}
 			}
@@ -305,7 +292,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 	}
 
 	// Log abnormal stream termination (no [DONE], no finish_reason)
-	if !receivedDone && c.debug != nil {
+	if !receivedDone {
 		if scanErr := scanner.Err(); scanErr != nil {
 			c.debug.Response("SSE", "STREAM ABORTED: scanner error: %v (finish_reason=%q)", scanErr, finishReason)
 		} else if finishReason == "" {
@@ -321,9 +308,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 			Type: "done",
 			Stop: finishReason,
 		}
-		if c.debug != nil {
-			c.debug.Response("SSE", "Final done event: stop=%s", finishReason)
-		}
+		c.debug.Response("SSE", "Final done event: stop=%s", finishReason)
 	}
 }
 

@@ -60,7 +60,7 @@ func ExtractXMLToolCalls(text string, debug llm.DebugLogger) ([]QwenXMLToolCall,
 		})
 	}
 
-	if len(result) > 0 && debug != nil {
+	if len(result) > 0 {
 		debug.Event("QUIRK", "xml-tool-call: extracted %d XML tool call(s) from text", len(result))
 	}
 

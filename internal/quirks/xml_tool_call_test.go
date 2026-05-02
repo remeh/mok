@@ -3,10 +3,12 @@ package quirks
 import (
 	"strings"
 	"testing"
+
+	"github.com/user/mmok/internal/llm"
 )
 
 func TestExtractXMLToolCalls_Empty(t *testing.T) {
-	result, found := ExtractXMLToolCalls("", nil)
+	result, found := ExtractXMLToolCalls("", llm.NopLogger{})
 	if found {
 		t.Error("expected no matches for empty string")
 	}
@@ -16,7 +18,7 @@ func TestExtractXMLToolCalls_Empty(t *testing.T) {
 }
 
 func TestExtractXMLToolCalls_NoToolCalls(t *testing.T) {
-	result, found := ExtractXMLToolCalls("just some regular text", nil)
+	result, found := ExtractXMLToolCalls("just some regular text", llm.NopLogger{})
 	if found {
 		t.Error("expected no matches for regular text")
 	}
@@ -32,7 +34,7 @@ func TestExtractXMLToolCalls_BashToolCall(t *testing.T) {
 		"</function>" +
 		"\u2581"
 
-	result, found := ExtractXMLToolCalls(input, nil)
+	result, found := ExtractXMLToolCalls(input, llm.NopLogger{})
 	if !found {
 		t.Fatal("expected to find XML tool call")
 	}
@@ -56,7 +58,7 @@ func TestExtractXMLToolCalls_ReadToolCall(t *testing.T) {
 		"</function>" +
 		"\u2581"
 
-	result, found := ExtractXMLToolCalls(input, nil)
+	result, found := ExtractXMLToolCalls(input, llm.NopLogger{})
 	if !found {
 		t.Fatal("expected to find XML tool call")
 	}
@@ -92,7 +94,7 @@ func TestExtractXMLToolCalls_MultipleToolCalls(t *testing.T) {
 		"\u2581" +
 		" end"
 
-	result, found := ExtractXMLToolCalls(input, nil)
+	result, found := ExtractXMLToolCalls(input, llm.NopLogger{})
 	if !found {
 		t.Fatal("expected to find XML tool calls")
 	}
@@ -116,7 +118,7 @@ func TestExtractXMLToolCalls_WithSurroundingText(t *testing.T) {
 		"\u2581" +
 		"\n\nThat should show the directory contents."
 
-	result, found := ExtractXMLToolCalls(input, nil)
+	result, found := ExtractXMLToolCalls(input, llm.NopLogger{})
 	if !found {
 		t.Fatal("expected to find XML tool call")
 	}

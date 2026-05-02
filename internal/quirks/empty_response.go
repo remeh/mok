@@ -18,8 +18,6 @@ func IsEmptyResponse(stopReason string, textLen int, thinkingLen int, toolCalls 
 	if textLen > 0 || thinkingLen > 0 || toolCalls > 0 {
 		return false
 	}
-	if debug != nil {
-		debug.Event("QUIRK", "empty-response: model returned stop with no content")
-	}
+	debug.Event("QUIRK", "empty-response: model returned stop with no content")
 	return true
 }

@@ -1,6 +1,10 @@
 package quirks
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/user/mmok/internal/llm"
+)
 
 func TestIsEmptyResponse(t *testing.T) {
 	tests := []struct {
@@ -22,7 +26,7 @@ func TestIsEmptyResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsEmptyResponse(tt.stopReason, tt.textLen, tt.thinkingLen, tt.toolCalls, nil)
+			got := IsEmptyResponse(tt.stopReason, tt.textLen, tt.thinkingLen, tt.toolCalls, llm.NopLogger{})
 			if got != tt.want {
 				t.Errorf("IsEmptyResponse(%q, %d, %d, %d) = %v, want %v",
 					tt.stopReason, tt.textLen, tt.thinkingLen, tt.toolCalls, got, tt.want)

@@ -2,6 +2,8 @@ package quirks
 
 import (
 	"testing"
+
+	"github.com/user/mmok/internal/llm"
 )
 
 // mockDebug implements llm.DebugLogger for testing.
@@ -41,7 +43,7 @@ func TestSanitizeContent(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, _ := SanitizeContent(tc.input, nil)
+			result, _ := SanitizeContent(tc.input, llm.NopLogger{})
 			if result != tc.want {
 				t.Errorf("expected %q, got %q", tc.want, result)
 			}
@@ -78,7 +80,7 @@ func TestUseThinkingAsContent(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, _ := UseThinkingAsContent(tc.content, tc.thinking, nil)
+			result, _ := UseThinkingAsContent(tc.content, tc.thinking, llm.NopLogger{})
 			if result != tc.want {
 				t.Errorf("expected %q, got %q", tc.want, result)
 			}

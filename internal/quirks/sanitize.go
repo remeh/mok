@@ -29,7 +29,7 @@ func SanitizeContent(s string, debug llm.DebugLogger) (string, bool) {
 	s = strings.TrimSpace(s)
 
 	changed := s != original
-	if changed && debug != nil {
+	if changed {
 		debug.Event("QUIRK", "sanitize: removed leaked reasoning tags from content")
 	}
 	return s, changed

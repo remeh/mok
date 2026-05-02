@@ -51,9 +51,9 @@ func NewDebugLoggerFile(enabled bool, path string) *DebugLogger {
 	}
 }
 
-// log formats and writes a debug line. Returns immediately if disabled.
+// log formats and writes a debug line. Returns immediately if disabled or nil.
 func (d *DebugLogger) log(category, msg string) {
-	if !d.enabled {
+	if d == nil || !d.enabled {
 		return
 	}
 	elapsed := time.Since(d.start).Truncate(time.Millisecond)
@@ -92,7 +92,7 @@ func (d *DebugLogger) Tool(category, format string, args ...any) {
 
 // JSON pretty-prints a value as JSON with indentation.
 func (d *DebugLogger) JSON(category, label string, v any) {
-	if !d.enabled {
+	if d == nil || !d.enabled {
 		return
 	}
 	data, err := json.MarshalIndent(v, "  ", "  ")
@@ -105,7 +105,7 @@ func (d *DebugLogger) JSON(category, label string, v any) {
 
 // Dump writes raw bytes with a label, truncating if too large.
 func (d *DebugLogger) Dump(category, label string, data []byte) {
-	if !d.enabled {
+	if d == nil || !d.enabled {
 		return
 	}
 	maxDump := 2048
@@ -123,9 +123,10 @@ func (d *DebugLogger) Separator(category string) {
 
 // Close releases any resources held by the debug logger.
 func (d *DebugLogger) Close() {
-	if d.out != nil {
-		if closer, ok := d.out.(io.Closer); ok {
-			_ = closer.Close()
-		}
+	if d == nil || d.out == nil {
+		return
+	}
+	if closer, ok := d.out.(io.Closer); ok {
+		_ = closer.Close()
 	}
 }

@@ -33,10 +33,8 @@ func SanitizeToolCalls(toolCalls []*llm.PartialTC, debug llm.DebugLogger) (Sanit
 		repaired, err := llm.ParseToolArgs(tc.RawArgs)
 		if err != nil {
 			result.DroppedNames = append(result.DroppedNames, tc.Name)
-			if debug != nil {
-				debug.Event("QUIRK", "malformed-tool-call: dropped %s, unrepairable args: %s",
-					tc.Name, truncateQuirk(tc.RawArgs, 60))
-			}
+			debug.Event("QUIRK", "malformed-tool-call: dropped %s, unrepairable args: %s",
+				tc.Name, truncateQuirk(tc.RawArgs, 60))
 			continue
 		}
 
@@ -50,9 +48,7 @@ func SanitizeToolCalls(toolCalls []*llm.PartialTC, debug llm.DebugLogger) (Sanit
 			"Your tool call(s) for %s had malformed arguments and could not be executed. Please retry with valid arguments.",
 			strings.Join(result.DroppedNames, ", "),
 		)
-		if debug != nil {
-			debug.Event("QUIRK", "malformed-tool-call: injecting retry notice for: %v", result.DroppedNames)
-		}
+		debug.Event("QUIRK", "malformed-tool-call: injecting retry notice for: %v", result.DroppedNames)
 	}
 
 	return result, notice

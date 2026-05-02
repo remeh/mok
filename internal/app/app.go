@@ -58,9 +58,7 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	}
 
 	client := llm.NewClient(cfg.Endpoint, cfg.BearerToken)
-	if debug != nil {
-		client.WithDebug(debug)
-	}
+	client.WithDebug(debug)
 
 	// Create tool registry and register built-in tools
 	toolRegistry := tools.NewRegistry()

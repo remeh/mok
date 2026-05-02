@@ -15,8 +15,6 @@ func UseThinkingAsContent(content string, thinking string, debug llm.DebugLogger
 	if thinking == "" {
 		return content, false
 	}
-	if debug != nil {
-		debug.Event("QUIRK", "thinking-as-content: using thinking as content")
-	}
+	debug.Event("QUIRK", "thinking-as-content: using thinking as content")
 	return thinking, true
 }
