@@ -29,7 +29,18 @@ type SanitizedToolCalls struct {
 func SanitizeToolCalls(toolCalls []*llm.PartialTC, debug llm.DebugLogger) (SanitizedToolCalls, string) {
 	var result SanitizedToolCalls
 
+	// Deduplicate: Qwen sometimes emits the same tool call multiple times.
+	// We keep the first occurrence of each (Name, RawArgs) pair.
+	seen := make(map[string]bool)
+
 	for _, tc := range toolCalls {
+		key := tc.Name + "\x00" + tc.RawArgs
+		if seen[key] {
+			debug.Event("QUIRK", "malformed-tool-call: dedup removed duplicate %s", tc.Name)
+			continue
+		}
+		seen[key] = true
+
 		repaired, err := llm.ParseToolArgs(tc.RawArgs)
 		if err != nil {
 			result.DroppedNames = append(result.DroppedNames, tc.Name)
