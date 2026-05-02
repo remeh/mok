@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/user/mmok/internal/types"
 )
 
@@ -103,11 +104,33 @@ func (s *Screen) SetStreaming(streaming bool) {
 // Render returns the complete screen as a string.
 func (s *Screen) Render() string {
 	msgLines := s.msgView.Render()
-	inputLine := s.inputArea.Render()
+
+	var inputLine string
+	if s.msgView.IsScrolledUp() {
+		inputLine = s.RenderScrollIndicator()
+	} else {
+		inputLine = s.inputArea.Render()
+	}
+
 	statusLine := s.statusBar.Render()
 
 	parts := []string{msgLines, inputLine, statusLine}
 	return strings.Join(parts, "\n")
+}
+
+// RenderScrollIndicator returns a line showing "vvvvvvv" on a white background.
+func (s *Screen) RenderScrollIndicator() string {
+	indicator := s.theme.ScrollIndicator.Render("vvvvvvv")
+	renderedWidth := lipgloss.Width(indicator)
+	if renderedWidth < s.width {
+		indicator += StringsRepeat(" ", s.width-renderedWidth)
+	}
+	return indicator
+}
+
+// IsScrolledUp returns true when the message view is scrolled above the bottom.
+func (s *Screen) IsScrolledUp() bool {
+	return s.msgView.IsScrolledUp()
 }
 
 // GetInputArea returns the input area for key handling.

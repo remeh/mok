@@ -20,6 +20,7 @@ type Theme struct {
 	Panel          lipgloss.Style
 	Dim            lipgloss.Style
 	Bold           lipgloss.Style
+	ScrollIndicator lipgloss.Style
 }
 
 // DefaultTheme returns the default color scheme.
@@ -41,5 +42,9 @@ func DefaultTheme() Theme {
 		Panel:             lipgloss.NewStyle().MarginLeft(1).MarginRight(1),
 		Dim:               lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
 		Bold:              lipgloss.NewStyle().Bold(true),
+		ScrollIndicator:   lipgloss.NewStyle().
+			Background(lipgloss.Color("15")).
+			Foreground(lipgloss.Color("235")).
+			Bold(true),
 	}
 }

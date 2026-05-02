@@ -143,6 +143,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.abortAgent()
 				break
 			}
+			if m.Screen.IsScrolledUp() {
+				break
+			}
 			input := m.Screen.GetInputArea().Value()
 			if input != "" {
 				if quitCmd := m.submitMessage(input); quitCmd != nil {
@@ -151,7 +154,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyUp, tea.KeyDown:
-			if m.Screen.GetInputArea().Value() == "" {
+			if m.Screen.GetInputArea().Value() == "" || m.Screen.IsScrolledUp() {
 				if msg.Type == tea.KeyUp {
 					m.Screen.GetMessageView().ScrollUp()
 				} else {
@@ -162,7 +165,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyCtrlU, tea.KeyCtrlD:
-			if m.Screen.GetInputArea().Value() == "" {
+			if m.Screen.GetInputArea().Value() == "" || m.Screen.IsScrolledUp() {
 				if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyCtrlU {
 					m.Screen.GetMessageView().ScrollPageUp()
 				} else {
@@ -171,7 +174,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyHome, tea.KeyEnd:
-			if m.Screen.GetInputArea().Value() == "" {
+			if m.Screen.GetInputArea().Value() == "" || m.Screen.IsScrolledUp() {
 				if msg.Type == tea.KeyHome {
 					m.Screen.GetMessageView().ScrollToTop()
 				} else {
@@ -181,6 +184,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		default:
 			if m.agentRunning {
+				break
+			}
+			if m.Screen.IsScrolledUp() {
 				break
 			}
 			handled := m.Screen.GetInputArea().HandleKey(msg.Type)

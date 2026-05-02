@@ -99,6 +99,17 @@ func (v *MessageView) ScrollToBottom() {
 	v.autoScroll = true
 }
 
+// IsAtBottom returns true when the viewport is showing the last visible lines.
+func (v *MessageView) IsAtBottom() bool {
+	totalLines := v.totalLineCount()
+	return v.scrollPos >= totalLines-v.visible
+}
+
+// IsScrolledUp returns true when the viewport is scrolled above the bottom.
+func (v *MessageView) IsScrolledUp() bool {
+	return !v.IsAtBottom()
+}
+
 // totalLineCount returns the total number of rendered lines.
 func (v *MessageView) totalLineCount() int {
 	total := 0
