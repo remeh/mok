@@ -21,8 +21,15 @@ type WriteTool struct {
 // Definition returns the tool's metadata.
 func (t *WriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "write",
-		Description: "Write content to a file. Creates parent directories if needed. Overwrites existing files.",
+		Name: "write",
+		Description: `Create a new file with the given content, or completely overwrite an existing file.
+
+Usage notes:
+- Creates parent directories automatically if they don't exist.
+- This tool overwrites the entire file. To modify specific parts of an existing file, use the edit tool instead.
+- Only use this tool for creating new files or for complete rewrites where most of the content changes.
+- Always provide the complete desired file content — partial content will result in a partial file.`,
+		Snippet: "Create a new file or completely overwrite an existing one",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

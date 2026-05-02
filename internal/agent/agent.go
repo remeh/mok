@@ -31,7 +31,7 @@ type Agent struct {
 
 // NewAgent creates a new Agent.
 func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, debug *DebugLogger) *Agent {
-	prompt := BuildSystemPrompt(&PromptConfig{CWD: cfg.CWD})
+	prompt := BuildSystemPrompt(&PromptConfig{CWD: cfg.CWD, Tools: toolRegistry})
 	a := &Agent{
 		client:       client,
 		config:       cfg,

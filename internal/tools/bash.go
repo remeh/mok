@@ -31,8 +31,17 @@ type BashTool struct {
 // Definition returns the tool's metadata.
 func (t *BashTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "bash",
-		Description: "Execute a shell command. Runs in a subshell with timeout. Captures stdout and stderr.",
+		Name: "bash",
+		Description: `Execute a shell command and return its output (stdout and stderr combined).
+
+Usage notes:
+- Commands run in a subshell (bash) in the working directory with a default timeout of 30 seconds.
+- Use the timeout parameter for long-running commands (e.g., builds, tests).
+- Use for: running builds, tests, git commands, file searches (ls, grep, find), installing packages, and other shell operations.
+- Do NOT use for reading file contents (use the read tool) or editing files (use the edit tool).
+- Output is truncated to 2000 lines / 50KB. For commands with large output, pipe through head/tail/grep.
+- The command runs to completion before returning. For interactive commands, this will hang until timeout.`,
+		Snippet: "Run a shell command with stdout/stderr capture",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

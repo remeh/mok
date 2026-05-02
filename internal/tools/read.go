@@ -31,8 +31,16 @@ type ReadTool struct {
 // Definition returns the tool's metadata.
 func (t *ReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "read",
-		Description: "Read the contents of a text file. For large files, use offset and limit to read in chunks.",
+		Name: "read",
+		Description: `Read the contents of a text file. Returns the file content with line numbers.
+
+Usage notes:
+- For large files, use offset and limit to read specific sections rather than loading the entire file.
+- offset is 1-indexed (line 1 is the first line). limit is the number of lines to return.
+- Maximum of 2000 lines per read. If the file is longer, the output will indicate how many lines remain.
+- Use this tool instead of bash cat/head/tail — it provides line numbers and handles truncation.
+- Always read a file before editing it to understand its current contents and structure.`,
+		Snippet: "Read file contents with line numbers (supports offset/limit for large files)",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

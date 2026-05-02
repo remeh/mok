@@ -10,6 +10,7 @@ import (
 type ToolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
+	Snippet     string         `json:"-"` // One-line summary for the system prompt (not sent to API)
 	Parameters  map[string]any `json:"parameters"` // JSON Schema object
 }
 
