@@ -76,9 +76,9 @@ internal/types/
 
 Precedence: defaults → YAML file → env vars → CLI flags.
 
-Supported config keys: `model`, `endpoint`, `bearer_token`, `cwd`, `max_context_tokens`, `compaction_threshold`, `keep_recent_tokens`, `temperature`, `max_tokens`, `model_quirks`.
+Supported config keys: `model`, `endpoint`, `bearer_token`, `cwd`, `max_context_tokens`, `compaction_threshold`, `keep_recent_tokens`, `temperature`, `max_tokens`.
 
-Env vars: `MMOK_MODEL`, `MMOK_ENDPOINT`, `MMOK_BEARER_TOKEN`, `MMOK_MAX_CONTEXT_TOKENS`, `MMOK_COMPACTION_THRESHOLD`, `MMOK_KEEP_RECENT_TOKENS`, `MMOK_TEMPERATURE`, `MMOK_MAX_TOKENS`, `MMOK_MODEL_QUIRKS`.
+Env vars: `MMOK_MODEL`, `MMOK_ENDPOINT`, `MMOK_BEARER_TOKEN`, `MMOK_MAX_CONTEXT_TOKENS`, `MMOK_COMPACTION_THRESHOLD`, `MMOK_KEEP_RECENT_TOKENS`, `MMOK_TEMPERATURE`, `MMOK_MAX_TOKENS`.
 
 File locations searched: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.yaml`.
 
@@ -96,27 +96,18 @@ File locations searched: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.
 - Abort: Ctrl+C / Esc aborts running agent, then quits
 - Input disabled during agent running
 - Context tracker: `ContextTracker` with `EstimateTokens` for token estimation
-- Config: YAML + env + flags with proper precedence, `bearer_token` and `model_quirks` support
+- Config: YAML + env + flags with proper precedence, `bearer_token` support.
 - System prompt: includes current date and working directory
 - LLM client: OpenAI-compatible SSE streaming, context-aware abort via `http.NewRequestWithContext`, handles `reasoning_content` for thinking tokens
 - Tool call accumulation: map+slice with index-first matching, ID fallback for Gemma quirks
-- XML tool call quirk: detects and converts XML-style tool calls (e.g. Qwen `\u2573<function=name>...\u2581`) in thinking/content when standard JSON tool_calls are absent
+- XML tool call quirk: detects and converts XML-style tool calls (e.g. Qwen `<function=name>...`) in thinking/content when standard JSON tool_calls are absent
 - JSON repair: three-layer fallback (direct parse → repair control chars/escapes → close unclosed braces)
 - Schema validation: `ValidateAndCoerce` with type coercion (string→number, string→boolean)
 - Built-in tools: read (offset/limit/truncation, images), write (auto-create dirs), edit (multi-edit, unified diff), bash (timeout, output truncation)
 - Tool registry: `Registry` with `Add`/`Get`/`All`/`ToSpecs`, wired into agent loop
 
-### Not Yet Implemented
+### Not Implemented
 - No conversation history persistence (in-memory only)
 - No context compaction (config fields exist but logic is absent)
 - No file attachment / context file support
 
-## Next Steps
-
-See [PLAN.md](./PLAN.md) for the full phase breakdown.
-
-### Phase 4 — Compaction
-Implement context compaction with LLM-driven summarization.
-
-### Phase 5 — MCP
-Add Model Context Protocol support for external tool providers.

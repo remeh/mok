@@ -11,12 +11,7 @@ import (
 
 // EditArgs represents the edit tool arguments.
 type EditArgs struct {
-	Path  string   `json:"path"`
-	Edits []EditOp `json:"edits"`
-}
-
-// EditOp represents a single search/replace edit.
-type EditOp struct {
+	Path    string `json:"path"`
 	OldText string `json:"oldText"`
 	NewText string `json:"newText"`
 }
@@ -30,7 +25,7 @@ type EditTool struct {
 func (t *EditTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "edit",
-		Description: "Edit a file by performing search/replace operations. Multiple edits can be done in one call. All edits match against the original content (not incremental). OldText must match exactly including whitespace.",
+		Description: "Edit a file by performing a search/replace operation. OldText must match exactly including whitespace. For multiple edits, call this tool multiple times.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -38,26 +33,16 @@ func (t *EditTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "Path to the file to edit (relative or absolute)",
 				},
-				"edits": map[string]any{
-					"type":        "array",
-					"description": "List of edit operations to apply",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"oldText": map[string]any{
-								"type":        "string",
-								"description": "Exact text to find (must match including whitespace)",
-							},
-							"newText": map[string]any{
-								"type":        "string",
-								"description": "Replacement text",
-							},
-						},
-						"required": []string{"oldText", "newText"},
-					},
+				"oldText": map[string]any{
+					"type":        "string",
+					"description": "Exact text to find (must match including whitespace)",
+				},
+				"newText": map[string]any{
+					"type":        "string",
+					"description": "Replacement text",
 				},
 			},
-			"required":             []string{"path", "edits"},
+			"required":             []string{"path", "oldText", "newText"},
 			"additionalProperties": false,
 		},
 	}
@@ -73,8 +58,8 @@ func (t *EditTool) Execute(args json.RawMessage) (string, error) {
 	if editArgs.Path == "" {
 		return "", fmt.Errorf("path is required")
 	}
-	if len(editArgs.Edits) == 0 {
-		return "", fmt.Errorf("edits list is required and must not be empty")
+	if editArgs.OldText == "" {
+		return "", fmt.Errorf("oldText must not be empty")
 	}
 
 	resolved, err := ResolvePath(editArgs.Path, t.CWD)
@@ -93,51 +78,15 @@ func (t *EditTool) Execute(args json.RawMessage) (string, error) {
 	}
 
 	originalStr := string(original)
-	modified := originalStr
 
-	// Track all edits for reporting
-	var appliedEdits []editReport
-	var failedEdits []editError
-
-	for i, edit := range editArgs.Edits {
-		if edit.OldText == "" {
-			failedEdits = append(failedEdits, editError{
-				index: i,
-				err:   "oldText must not be empty",
-			})
-			continue
-		}
-
-		// Find in original content
-		idx := strings.Index(modified, edit.OldText)
-		if idx == -1 {
-			failedEdits = append(failedEdits, editError{
-				index: i,
-				err:   fmt.Sprintf("text not found: %q", truncateForError(edit.OldText)),
-			})
-			continue
-		}
-
-		// Apply edit
-		before := modified[:idx]
-		after := modified[idx+len(edit.OldText):]
-		modified = before + edit.NewText + after
-
-		appliedEdits = append(appliedEdits, editReport{
-			index:     i,
-			oldLength: len(edit.OldText),
-			newLength: len(edit.NewText),
-		})
+	// Find the old text
+	idx := strings.Index(originalStr, editArgs.OldText)
+	if idx == -1 {
+		return "", fmt.Errorf("text not found: %q", truncateForError(editArgs.OldText))
 	}
 
-	// If no edits were applied, return error
-	if len(appliedEdits) == 0 {
-		errMsgs := make([]string, 0, len(failedEdits))
-		for _, e := range failedEdits {
-			errMsgs = append(errMsgs, fmt.Sprintf("edit %d: %s", e.index, e.err))
-		}
-		return "", fmt.Errorf("no edits applied:\n%s", strings.Join(errMsgs, "\n"))
-	}
+	// Apply edit
+	modified := originalStr[:idx] + editArgs.NewText + originalStr[idx+len(editArgs.OldText):]
 
 	// Generate unified diff
 	dmp := diffmatchpatch.New()
@@ -150,30 +99,7 @@ func (t *EditTool) Execute(args json.RawMessage) (string, error) {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
-	// Build result message
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Applied %d edit(s) to %s\n\n", len(appliedEdits), resolved))
-	sb.WriteString(unifiedDiff)
-
-	if len(failedEdits) > 0 {
-		sb.WriteString("\nFailed edits:\n")
-		for _, e := range failedEdits {
-			sb.WriteString(fmt.Sprintf("  edit %d: %s\n", e.index, e.err))
-		}
-	}
-
-	return sb.String(), nil
-}
-
-type editReport struct {
-	index     int
-	oldLength int
-	newLength int
-}
-
-type editError struct {
-	index int
-	err   string
+	return fmt.Sprintf("Applied edit to %s\n\n%s", resolved, unifiedDiff), nil
 }
 
 func truncateForError(s string) string {
