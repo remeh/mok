@@ -29,8 +29,19 @@ type EditTool struct {
 // Definition returns the tool's metadata.
 func (t *EditTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "edit",
-		Description: "Edit a file by performing search/replace operations. Multiple edits can be done in one call. All edits match against the original content (not incremental). OldText must match exactly including whitespace.",
+		Name: "edit",
+		Description: `Edit a file by performing one or more search/replace operations. Returns a unified diff of the changes.
+
+Usage notes:
+- You MUST read the file first before editing. Use the read tool to see the current contents.
+- oldText must match the file content exactly, including whitespace and indentation. Copy the exact text from the read output.
+- Multiple edits in one call are all matched against the original file content (not incrementally against prior edits in the same call).
+- If oldText is not found, the edit fails. Re-read the file with the read tool to see its actual content before retrying.
+- Use this tool instead of bash sed/awk — it validates changes and shows a diff of what changed.
+- Prefer this tool over write for modifying existing files, as it only changes what needs to change.
+
+Example call: {"path": "src/main.go", "edits": [{"oldText": "fmt.Println(\"hello\")", "newText": "fmt.Println(\"hello world\")"}]}`,
+		Snippet: "Search/replace edit with exact matching and diff output",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
