@@ -32,10 +32,11 @@ func BuildSystemPrompt(cfg *PromptConfig) string {
 executing commands, editing code, and writing new files.
 
 Guidelines:
-- Use bash for file operations like ls, rg, find
+- Use bash for file operations like ls, grep, find
 - Be concise in your responses
 - Show file paths clearly when working with files
 - Read files in chunks when possible
+- JSON tool calls must be valid
 
 Current date: %s
 Working directory: %s%s`, date, cwd, agentMd)

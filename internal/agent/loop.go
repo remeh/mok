@@ -255,9 +255,35 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 
 		// If we have tool calls (from JSON or XML quirk), execute them
 		if len(toolCallOrder) > 0 {
+			// Quirk: sanitize tool call args before storing in history.
+			// Malformed JSON in history causes server-side 500 on replay.
+			sanitized, retryNotice := quirks.SanitizeToolCalls(toolCallOrder, debug)
+			toolCallOrder = sanitized.Valid
+
+			if retryNotice != "" {
+				// Some tool calls had unrepairable args: store the assistant
+				// message (without tool calls) and inject a notice so the
+				// LLM knows to retry.
+				a.messages = append(a.messages, assistantMsg)
+				a.tracker.AddMessage(assistantMsg)
+				a.messages = append(a.messages, llm.Message{
+					Role:    "user",
+					Content: retryNotice,
+				})
+
+				// If all tool calls were invalid, skip execution entirely
+				if len(toolCallOrder) == 0 {
+					events <- EventMessageEnd{Usage: usage}
+					iteration++
+					continue
+				}
+			}
+
 			assistantMsg.ToolCalls = llm.ToAPIToolCalls(toolCallOrder)
-			a.messages = append(a.messages, assistantMsg)
-			a.tracker.AddMessage(assistantMsg)
+			if retryNotice == "" {
+				a.messages = append(a.messages, assistantMsg)
+				a.tracker.AddMessage(assistantMsg)
+			}
 
 			// Store thinking text
 			a.lastThinking = thinkingText.String()
@@ -266,7 +292,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 				debug.Tool("TOOL", "Executing %d tool call(s)", len(toolCallOrder))
 			}
 
-			// Parse + validate + execute each tool call in order
+			// Execute each tool call in order (args already sanitized)
 			for _, tc := range toolCallOrder {
 				events <- EventToolCallEnd{
 					ToolCallID: tc.ID,
@@ -274,14 +300,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 					Args:       tc.RawArgs,
 				}
 
-				// Parse accumulated args (three-layer repair)
-				args, err := llm.ParseToolArgs(tc.RawArgs)
-				if err != nil {
-					args = json.RawMessage(`{}`)
-					if debug != nil {
-						debug.Tool("TOOL", "%s arg parse error (using {}): %v", tc.Name, err)
-					}
-				}
+				args := json.RawMessage(tc.RawArgs)
 
 				// Validate and coerce against tool schema
 				if a.tools != nil {
