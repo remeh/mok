@@ -306,7 +306,10 @@ func (v *MessageView) tagStyle(msg *types.Message) lipgloss.Style {
 func (v *MessageView) Render() string {
 	if len(v.messages) == 0 {
 		fullHeight := v.height + v.reservedLines
-		centered := v.theme.Dim.Render("No messages yet. Type something!")
+		centered := v.theme.Dim.Copy().
+			AlignHorizontal(lipgloss.Center).
+			Width(v.width).
+			Render("No messages yet. Start coding now!")
 		centerLine := fullHeight / 2 - 1
 		topPadding := StringsRepeat("\n", max(0, centerLine))
 		bottomPadding := StringsRepeat("\n", max(0, v.height-centerLine-1))
