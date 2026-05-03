@@ -4,22 +4,22 @@ import "github.com/charmbracelet/lipgloss"
 
 // Theme holds all lipgloss styles for the TUI.
 type Theme struct {
-	User           lipgloss.Style
-	Assistant      lipgloss.Style
-	AssistantLabel lipgloss.Style
-	ToolCall       lipgloss.Style
-	ToolResult     lipgloss.Style
+	User              lipgloss.Style
+	Assistant         lipgloss.Style
+	AssistantLabel    lipgloss.Style
+	ToolCall          lipgloss.Style
+	ToolResult        lipgloss.Style
 	ToolResultCollapsed lipgloss.Style
-	Error          lipgloss.Style
-	StatusBar      lipgloss.Style
-	StatusBarActive lipgloss.Style
-	StatusBarIdle   lipgloss.Style
-	StatusBarError  lipgloss.Style
+	Error             lipgloss.Style
+	StatusBar         lipgloss.Style
+	StatusBarActive   lipgloss.Style
+	StatusBarIdle     lipgloss.Style
+	StatusBarError    lipgloss.Style
 	InputPrefix    lipgloss.Style
 	Border         lipgloss.Style
-	Panel          lipgloss.Style
-	Dim            lipgloss.Style
-	Bold           lipgloss.Style
+	Panel             lipgloss.Style
+	Dim               lipgloss.Style
+	Bold              lipgloss.Style
 }
 
 // DefaultTheme returns the default color scheme.
@@ -36,8 +36,8 @@ func DefaultTheme() Theme {
 		StatusBarActive:   lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("226")).Bold(true),
 		StatusBarIdle:     lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("65")),
 		StatusBarError:    lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("196")).Bold(true),
-		InputPrefix:       lipgloss.NewStyle().Foreground(lipgloss.Color("144")).Bold(true),
-		Border:            lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")),
+		InputPrefix: lipgloss.NewStyle().Foreground(lipgloss.Color("144")).Bold(true),
+		Border:      lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")),
 		Panel:             lipgloss.NewStyle().MarginLeft(1).MarginRight(1),
 		Dim:               lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
 		Bold:              lipgloss.NewStyle().Bold(true),

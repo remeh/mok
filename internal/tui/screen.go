@@ -64,6 +64,11 @@ func (s *Screen) SetInputValue(v string) {
 	s.inputArea.SetValue(v)
 }
 
+// SetBlocked sets whether the input area is visually blocked.
+func (s *Screen) SetBlocked(blocked bool) {
+	s.inputArea.SetBlocked(blocked)
+}
+
 // SetModel sets the model name in the status bar.
 func (s *Screen) SetModel(model string) {
 	s.statusBar.SetModel(model)

@@ -17,6 +17,7 @@ type InputArea struct {
 	prompt      string
 	width       int
 	focused     bool
+	blocked     bool
 }
 
 // NewInputArea creates a new InputArea.
@@ -32,6 +33,11 @@ func NewInputArea(theme Theme, prompt string) *InputArea {
 // SetFocused sets whether the input area accepts keystrokes.
 func (i *InputArea) SetFocused(focused bool) {
 	i.focused = focused
+}
+
+// SetBlocked sets whether the input area is visually blocked (agent running).
+func (i *InputArea) SetBlocked(blocked bool) {
+	i.blocked = blocked
 }
 
 // SetValue sets the input value.
@@ -159,6 +165,10 @@ func (i *InputArea) HandleRune(r rune) {
 
 // Render returns the styled input line.
 func (i *InputArea) Render() string {
+	if i.blocked {
+		return StringsRepeat(" ", i.width)
+	}
+
 	prefix := i.theme.InputPrefix.Render(i.prompt)
 	prefixWidth := lipgloss.Width(prefix)
 

@@ -270,6 +270,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.streamMsg = nil
 		m.cancel = nil
 		m.Screen.GetInputArea().SetFocused(true)
+		m.Screen.SetBlocked(false)
 		m.Screen.SetStatusBarState(tui.StatusIdle)
 
 	case agent.EventToolCallStart:
@@ -314,6 +315,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.streamMsg = nil
 		m.cancel = nil
 		m.Screen.GetInputArea().SetFocused(true)
+		m.Screen.SetBlocked(false)
 		m.Screen.SetStatusBarState(tui.StatusError)
 		errMsg := types.NewMessage(types.MsgAssistant, "Error: "+ev.Err.Error())
 		m.Messages = append(m.Messages, errMsg)
@@ -443,6 +445,7 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 
 	m.agentRunning = true
 	m.Screen.GetInputArea().SetFocused(false)
+	m.Screen.SetBlocked(true)
 	m.Screen.SetStatusBarState(tui.StatusProcessing)
 
 	// Create a fresh event channel for this turn.
