@@ -169,8 +169,8 @@ func TestMessageViewToolCall(t *testing.T) {
 	v.AddMessage(msg)
 
 	rendered := v.Render()
-	if !strings.Contains(rendered, "tool_call") {
-		t.Errorf("Render should contain tool_call label: %q", rendered)
+	if !strings.Contains(rendered, "read") {
+		t.Errorf("Render should contain read label: %q", rendered)
 	}
 }
 
@@ -214,8 +214,8 @@ func TestMessageViewToolResultExpanded(t *testing.T) {
 	v.AddMessage(msg)
 
 	rendered := v.Render()
-	if !strings.Contains(rendered, "tool_result") {
-		t.Errorf("Render should contain tool_result label: %q", rendered)
+	if !strings.Contains(rendered, "read") {
+		t.Errorf("Render should contain read label: %q", rendered)
 	}
 	if !strings.Contains(rendered, "file contents here") {
 		t.Errorf("Render should contain full content: %q", rendered)
