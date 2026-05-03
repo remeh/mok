@@ -438,6 +438,7 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 	m.Messages = append(m.Messages, userMsg)
 	m.Screen.GetInputArea().SetValue("")
 	m.Screen.GetInputArea().PushHistory()
+	m.Screen.SetMessages(m.Messages)
 	m.Screen.GetMessageView().ScrollToBottom()
 
 	m.agentRunning = true
