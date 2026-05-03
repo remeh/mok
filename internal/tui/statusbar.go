@@ -29,12 +29,12 @@ type StatusBar struct {
 	toolName     string // Name of the tool being executed
 	scrollHint   int    // lines below the viewport; rendered as ↓N when > 0
 	width        int
-	spinnerFrame int
+	dotPhase     int    // 0..2, cycles to produce ".  " ".. " "..."
+	tickCount    int    // raw tick counter; dotPhase advances every dotTickInterval ticks
 	lastUpdate   time.Time
 }
 
-// Spinner frames for activity indicator
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+const dotTickInterval = 10 // advance dots every 10 ticks (~1s at 100ms tick rate)
 
 // NewStatusBar creates a new StatusBar.
 func NewStatusBar(theme Theme) *StatusBar {
@@ -42,6 +42,7 @@ func NewStatusBar(theme Theme) *StatusBar {
 		theme:      theme,
 		state:      StatusIdle,
 		maxTokens:  131072,
+		dotPhase:   2, // start at 3 dots so initial render matches "..."
 		lastUpdate: time.Now(),
 	}
 }
@@ -88,9 +89,12 @@ func (s *StatusBar) SetWidth(width int) {
 	s.width = width
 }
 
-// Tick advances the spinner animation. Call periodically (e.g., from a tea.Tick cmd).
+// Tick advances the dot animation and message view cursor frame.
 func (s *StatusBar) Tick() {
-	s.spinnerFrame = (s.spinnerFrame + 1) % len(spinnerFrames)
+	s.tickCount++
+	if s.tickCount%dotTickInterval == 0 {
+		s.dotPhase = (s.dotPhase + 1) % 3
+	}
 }
 
 // Render returns the styled status bar string.
@@ -117,7 +121,7 @@ func (s *StatusBar) Render() string {
 		middle = middle + " " + hint
 	}
 
-	// Right: status with spinner when active
+	// Right: status with dot animation when active
 	right := s.renderStatus()
 
 	// Combine with spacing
@@ -145,18 +149,34 @@ func (s *StatusBar) renderStatus() string {
 	case StatusError:
 		return s.theme.StatusBarError.Render("✗ error")
 	case StatusToolCall:
+		dots := dotSuffix(s.dotPhase)
 		if s.toolName != "" {
-			return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " executing: " + s.toolName)
+			return s.theme.StatusBarActive.Render("executing: " + s.toolName + dots)
 		}
-		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " executing tool...")
+		return s.theme.StatusBarActive.Render("executing tool" + dots)
 	case StatusProcessing:
-		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " processing...")
+		dots := dotSuffix(s.dotPhase)
+		return s.theme.StatusBarActive.Render("processing" + dots)
 	case StatusStreaming:
-		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " streaming...")
+		dots := dotSuffix(s.dotPhase)
+		return s.theme.StatusBarActive.Render("streaming" + dots)
 	case StatusCompacting:
-		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " compacting...")
+		dots := dotSuffix(s.dotPhase)
+		return s.theme.StatusBarActive.Render("compacting" + dots)
 	default:
 		return s.theme.StatusBar.Render(string(s.state))
+	}
+}
+
+// dotSuffix returns a fixed-width (3 chars) dot suffix: ".  " ".. " "..."
+func dotSuffix(phase int) string {
+	switch phase {
+	case 0:
+		return ".  "
+	case 1:
+		return ".. "
+	default:
+		return "..."
 	}
 }
 

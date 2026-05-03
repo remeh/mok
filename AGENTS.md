@@ -92,7 +92,7 @@ File locations searched: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.
 - Agent events: `EventTurnStart`, `EventMessageStart`, `EventTextDelta`, `EventThinkingDelta`, `EventMessageEnd`, `EventTurnEnd`, `EventError`
 - TUI message view: scrollable, word wrap, `[thinking]` collapsed indicator, cursor during streaming
 - Tool results: collapsed by default with one-line summary, press `space` to expand/collapse
-- Status bar: spinner animation during activity, granular states (`thinking...`, `streaming...`, `executing: <tool>`, `● ready`, `✗ error`)
+- Status bar: animated granular states (`thinking...`, `streaming...`, `executing: <tool>`, `● ready`, `✗ error`)
 - Abort: Ctrl+C / Esc aborts running agent, then quits
 - Input disabled during agent running
 - Context tracker: `ContextTracker` with `EstimateTokens` for token estimation
