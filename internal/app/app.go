@@ -115,7 +115,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.agentRunning {
 				m.abortAgent()
 			}
-			break
 
 		case tea.KeyCtrlZ:
 			return m, tea.Suspend
@@ -127,12 +126,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd := m.openEditor(); cmd != nil {
 				return m, cmd
 			}
-			break
 
 		case tea.KeyCtrlO:
 			// Expand all collapsed tool results
 			m.expandAllToolResults()
-			break
 
 		case tea.KeyEnter:
 			if msg.Alt {
@@ -162,21 +159,17 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyCtrlU, tea.KeyCtrlD:
-			if m.Screen.GetInputArea().Value() == "" || m.Screen.IsScrolledUp() {
-				if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyCtrlU {
-					m.Screen.GetMessageView().ScrollPageUp()
-				} else {
-					m.Screen.GetMessageView().ScrollPageDown()
-				}
+			if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyCtrlU {
+				m.Screen.GetMessageView().ScrollPageUp()
+			} else {
+				m.Screen.GetMessageView().ScrollPageDown()
 			}
 
-		case tea.KeyHome, tea.KeyEnd:
-			if m.Screen.GetInputArea().Value() == "" || m.Screen.IsScrolledUp() {
-				if msg.Type == tea.KeyHome {
-					m.Screen.GetMessageView().ScrollToTop()
-				} else {
-					m.Screen.GetMessageView().ScrollToBottom()
-				}
+		case tea.KeyCtrlT, tea.KeyCtrlB:
+			if msg.Type == tea.KeyCtrlT {
+				m.Screen.GetMessageView().ScrollToTop()
+			} else {
+				m.Screen.GetMessageView().ScrollToBottom()
 			}
 
 		default:
