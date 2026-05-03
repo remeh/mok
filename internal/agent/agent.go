@@ -11,10 +11,9 @@ import (
 
 // AgentConfig holds the configuration values the agent needs.
 type AgentConfig struct {
-	Model       string
-	Temperature float32
-	MaxTokens   int
-	CWD         string
+	Model     string
+	MaxTokens int
+	CWD       string
 }
 
 // Agent manages the conversation loop.

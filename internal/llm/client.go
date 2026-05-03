@@ -74,11 +74,10 @@ type APIToolCall struct {
 
 // ChatRequest is a single chat completion request.
 type ChatRequest struct {
-	Model       string
-	Messages    []Message
-	Tools       []ToolSpec
-	Temperature float32
-	MaxTokens   int
+	Model     string
+	Messages  []Message
+	Tools     []ToolSpec
+	MaxTokens int
 }
 
 // ToolSpec is the wire format for a tool definition sent to the API.
@@ -169,11 +168,10 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 
 func (c *Client) buildRequestBody(req *ChatRequest) map[string]any {
 	body := map[string]any{
-		"model":        req.Model,
-		"messages":     req.Messages,
-		"stream":       true,
+		"model":          req.Model,
+		"messages":       req.Messages,
+		"stream":         true,
 		"stream_options": map[string]any{"include_usage": true},
-		"temperature":  req.Temperature,
 	}
 	if req.MaxTokens > 0 {
 		body["max_tokens"] = req.MaxTokens

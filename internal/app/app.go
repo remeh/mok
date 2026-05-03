@@ -23,13 +23,13 @@ type agentEvent struct {
 
 // AppModel is the root bubbletea model for the application.
 type AppModel struct {
-	Config    *Config
-	Screen    *tui.Screen
-	Agent     *agent.Agent
-	Messages  []*types.Message
-	Debug     *agent.DebugLogger
-	width     int
-	height    int
+	Config         *Config
+	Screen         *tui.Screen
+	Agent          *agent.Agent
+	Messages       []*types.Message
+	Debug          *agent.DebugLogger
+	width          int
+	height         int
 	editorTempFile string // path to temp file used by Ctrl-G editor
 	quitting       bool
 
@@ -68,10 +68,9 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
 	agt := agent.NewAgent(client, agent.AgentConfig{
-		Model:       cfg.Model,
-		Temperature: cfg.Temperature,
-		MaxTokens:   cfg.MaxTokens,
-		CWD:         cfg.CWD,
+		Model:     cfg.Model,
+		MaxTokens: cfg.MaxTokens,
+		CWD:       cfg.CWD,
 	}, toolRegistry, debug)
 
 	return &AppModel{

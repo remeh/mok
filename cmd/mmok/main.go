@@ -30,7 +30,6 @@ func main() {
 	endpoint := flag.String("endpoint", "", "API endpoint URL")
 	bearerToken := flag.String("bearer-token", "", "Bearer token for API authentication")
 	maxContext := flag.Int("max-context-tokens", 0, "Max context tokens")
-	temperature := flag.Float64("temperature", 0, "Sampling temperature")
 	maxTokens := flag.Int("max-tokens", 0, "Max response tokens")
 	debug := flag.Bool("debug", false, "Enable debug logging to stderr")
 
@@ -46,7 +45,6 @@ func main() {
 		"endpoint":           *endpoint,
 		"bearer-token":       *bearerToken,
 		"max-context-tokens": fmt.Sprintf("%d", *maxContext),
-		"temperature":        fmt.Sprintf("%f", *temperature),
 		"max-tokens":         fmt.Sprintf("%d", *maxTokens),
 		"debug":              fmt.Sprintf("%t", *debug),
 	}
@@ -104,10 +102,9 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
 	agt := agent.NewAgent(client, agent.AgentConfig{
-		Model:       cfg.Model,
-		Temperature: cfg.Temperature,
-		MaxTokens:   cfg.MaxTokens,
-		CWD:         cfg.CWD,
+		Model:     cfg.Model,
+		MaxTokens: cfg.MaxTokens,
+		CWD:       cfg.CWD,
 	}, toolRegistry, debug)
 
 	startTime := time.Now()

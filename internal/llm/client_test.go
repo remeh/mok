@@ -37,10 +37,9 @@ func TestNewClientNoToken(t *testing.T) {
 
 func TestChatRequestMarshal(t *testing.T) {
 	req := ChatRequest{
-		Model:       "test-model",
-		Messages:    []Message{{Role: "user", Content: "hello"}},
-		Temperature: 0.5,
-		MaxTokens:   100,
+		Model:     "test-model",
+		Messages:  []Message{{Role: "user", Content: "hello"}},
+		MaxTokens: 100,
 	}
 
 	body := req
@@ -56,9 +55,6 @@ func TestChatRequestMarshal(t *testing.T) {
 
 	if unmarshaled.Model != "test-model" {
 		t.Errorf("model = %q, want 'test-model'", unmarshaled.Model)
-	}
-	if unmarshaled.Temperature != 0.5 {
-		t.Errorf("temperature = %f, want 0.5", unmarshaled.Temperature)
 	}
 	if unmarshaled.MaxTokens != 100 {
 		t.Errorf("max_tokens = %d, want 100", unmarshaled.MaxTokens)
@@ -350,6 +346,6 @@ func TestStreamAPIError(t *testing.T) {
 		t.Fatal("expected error for 500 response")
 	}
 	if !strings.Contains(err.Error(), "500") {
-			t.Errorf("error = %v, want it to contain '500'", err)
+		t.Errorf("error = %v, want it to contain '500'", err)
 	}
 }

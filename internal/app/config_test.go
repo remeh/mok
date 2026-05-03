@@ -24,9 +24,6 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.KeepRecentTokens != 16384 {
 		t.Errorf("default keep_recent_tokens = %d", cfg.KeepRecentTokens)
 	}
-	if cfg.Temperature != 0.7 {
-		t.Errorf("default temperature = %f", cfg.Temperature)
-	}
 	if cfg.MaxTokens != 0 {
 		t.Errorf("default max_tokens = %d", cfg.MaxTokens)
 	}
@@ -40,7 +37,6 @@ endpoint: "http://192.168.1.1:9000/v1"
 max_context_tokens: 65536
 compaction_threshold: 0.9
 keep_recent_tokens: 8192
-temperature: 0.5
 max_tokens: 4096
 `
 	yamlPath := filepath.Join(tmpDir, "mmok.yaml")
@@ -84,14 +80,12 @@ func TestLoadConfigEnvVars(t *testing.T) {
 	os.Setenv("MMOK_ENDPOINT", "http://env-host:9999/v1")
 	os.Setenv("MMOK_MAX_CONTEXT_TOKENS", "32768")
 	os.Setenv("MMOK_KEEP_RECENT_TOKENS", "4096")
-	os.Setenv("MMOK_TEMPERATURE", "0.7")
 	os.Setenv("MMOK_MAX_TOKENS", "2048")
 	t.Cleanup(func() {
 		os.Unsetenv("MMOK_MODEL")
 		os.Unsetenv("MMOK_ENDPOINT")
 		os.Unsetenv("MMOK_MAX_CONTEXT_TOKENS")
 		os.Unsetenv("MMOK_KEEP_RECENT_TOKENS")
-		os.Unsetenv("MMOK_TEMPERATURE")
 		os.Unsetenv("MMOK_MAX_TOKENS")
 	})
 
@@ -230,7 +224,6 @@ func TestApplyFlags(t *testing.T) {
 	flags := map[string]string{
 		"model":              "flag-model",
 		"max-context-tokens": "128000",
-		"temperature":        "0.3",
 		"max-tokens":         "8192",
 	}
 
@@ -241,9 +234,6 @@ func TestApplyFlags(t *testing.T) {
 	}
 	if cfg.MaxContextTokens != 128000 {
 		t.Errorf("max_context_tokens = %d, want 128000", cfg.MaxContextTokens)
-	}
-	if cfg.Temperature != 0.3 {
-		t.Errorf("temperature = %f, want 0.3", cfg.Temperature)
 	}
 	if cfg.MaxTokens != 8192 {
 		t.Errorf("max_tokens = %d, want 8192", cfg.MaxTokens)
@@ -266,11 +256,9 @@ func TestApplyFlagsEmptyStrings(t *testing.T) {
 
 func TestLoadFromEnvInvalidValues(t *testing.T) {
 	os.Setenv("MMOK_MAX_CONTEXT_TOKENS", "not-a-number")
-	os.Setenv("MMOK_TEMPERATURE", "not-a-number")
 	os.Setenv("MMOK_MAX_TOKENS", "not-a-number")
 	t.Cleanup(func() {
 		os.Unsetenv("MMOK_MAX_CONTEXT_TOKENS")
-		os.Unsetenv("MMOK_TEMPERATURE")
 		os.Unsetenv("MMOK_MAX_TOKENS")
 	})
 

@@ -48,11 +48,10 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		debug.Request("CONTEXT", "Context built: %d messages, %d tokens", len(messages), a.tracker.TotalTokens())
 
 		req := &llm.ChatRequest{
-			Model:       a.config.Model,
-			Messages:    messages,
-			Tools:       a.buildToolSpecs(),
-			Temperature: a.config.Temperature,
-			MaxTokens:   a.config.MaxTokens,
+			Model:     a.config.Model,
+			Messages:  messages,
+			Tools:     a.buildToolSpecs(),
+			MaxTokens: a.config.MaxTokens,
 		}
 
 		eventChan, err := a.client.Stream(ctx, req)

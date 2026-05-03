@@ -74,13 +74,12 @@ func loadFromFile() (*Config, error) {
 func loadFromEnv(cfg *Config) error {
 	// Use env struct tags for clean parsing
 	type envConfig struct {
-		Model              string `env:"MODEL" envDefault:""`
-		Endpoint           string `env:"ENDPOINT" envDefault:""`
-		MaxContextTokens   int    `env:"MAX_CONTEXT_TOKENS" envDefault:"0"`
+		Model               string  `env:"MODEL" envDefault:""`
+		Endpoint            string  `env:"ENDPOINT" envDefault:""`
+		MaxContextTokens    int     `env:"MAX_CONTEXT_TOKENS" envDefault:"0"`
 		CompactionThreshold float64 `env:"COMPACTION_THRESHOLD" envDefault:"0"`
-		KeepRecentTokens   int    `env:"KEEP_RECENT_TOKENS" envDefault:"0"`
-		Temperature        float32 `env:"TEMPERATURE" envDefault:"0"`
-		MaxTokens          int    `env:"MAX_TOKENS" envDefault:"0"`
+		KeepRecentTokens    int     `env:"KEEP_RECENT_TOKENS" envDefault:"0"`
+		MaxTokens           int     `env:"MAX_TOKENS" envDefault:"0"`
 	}
 
 	// Build a temporary env map with MMOK_ prefix stripped
@@ -115,11 +114,6 @@ func loadFromEnv(cfg *Config) error {
 			cfg.KeepRecentTokens = n
 		}
 	}
-	if v, ok := envMap["TEMPERATURE"]; ok && v != "" {
-		if n, err := strconv.ParseFloat(v, 32); err == nil {
-			cfg.Temperature = float32(n)
-		}
-	}
 	if v, ok := envMap["MAX_TOKENS"]; ok && v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.MaxTokens = n
@@ -146,11 +140,6 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	if v, ok := flags["max-context-tokens"]; ok && v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.MaxContextTokens = n
-		}
-	}
-	if v, ok := flags["temperature"]; ok && v != "" {
-		if n, err := strconv.ParseFloat(v, 32); err == nil {
-			cfg.Temperature = float32(n)
 		}
 	}
 	if v, ok := flags["max-tokens"]; ok && v != "" {
@@ -192,7 +181,5 @@ func mergeConfig(dst, src *Config) {
 	if src.Debug {
 		dst.Debug = true
 	}
-	// Temperature can be 0 intentionally, so we check a sentinel
-	// For now, if the YAML has it, it was explicitly set — we handle this
-	// by checking if the source value differs from default
+
 }
