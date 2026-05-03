@@ -11,6 +11,7 @@ type Config struct {
 	MaxContextTokens    int     `yaml:"max_context_tokens"`
 	CompactionThreshold float64 `yaml:"compaction_threshold"`
 	KeepRecentTokens    int     `yaml:"keep_recent_tokens"`
+	SummarizationModel  string  `yaml:"summarization_model"`
 	MaxTokens           int     `yaml:"max_tokens"`
 	Debug               bool    `yaml:"debug"`
 }

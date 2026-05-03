@@ -48,6 +48,39 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 
 		debug.Event("AGENT", "Iteration %d", iteration)
 
+		// Check for compaction before building context
+		currentTokens := a.tracker.TotalTokens()
+		if a.compactor != nil && a.compactor.ShouldCompact(currentTokens) {
+			debug.Event("CONTEXT", "Compaction triggered: %d tokens (threshold: %.0f%% of %d)",
+				currentTokens, a.compactor.Config().Threshold*100, a.compactor.Config().MaxContextTokens)
+			events <- EventCompactionStart{TokensBefore: currentTokens}
+
+			// Build full context for compaction
+			allMessages := a.buildMessageList()
+			compacted, result, err := a.compactor.Compact(ctx, allMessages)
+			if err != nil {
+				events <- EventCompactionError{Err: err}
+				debug.Event("CONTEXT", "Compaction failed: %v, using hard cut", err)
+				// Fallback: continue without compaction, the LLM will handle it
+			} else {
+				// Update agent's message history with compacted version
+				a.messages = compacted[1:] // Skip system prompt (index 0)
+				// Reset tracker and re-add messages
+				a.tracker = llm.NewContextTracker()
+				for _, msg := range compacted {
+					a.tracker.AddMessage(msg)
+				}
+				events <- EventCompactionEnd{
+					TokensBefore:     result.TokensBefore,
+					TokensAfter:      result.TokensAfter,
+					MessagesRemoved:  result.MessagesRemoved,
+					SummaryAvailable: result.CompactSummary != nil,
+				}
+				debug.Event("CONTEXT", "Compaction complete: %d -> %d tokens, removed %d messages",
+					result.TokensBefore, result.TokensAfter, result.MessagesRemoved)
+			}
+		}
+
 		// Build context: system prompt + conversation history
 		messages := a.buildContext()
 		debug.Request("CONTEXT", "Context built: %d messages, %d tokens", len(messages), a.tracker.TotalTokens())
@@ -409,6 +442,12 @@ func (a *Agent) buildContext() []llm.Message {
 	a.debug.Request("CONTEXT", "Total: %d messages, %d tokens", len(messages), a.tracker.TotalTokens())
 
 	return messages
+}
+
+// buildMessageList returns the full message list including system prompt.
+// This is used for compaction to get the complete context.
+func (a *Agent) buildMessageList() []llm.Message {
+	return a.buildContext()
 }
 
 // truncateDebug truncates a string for debug output.

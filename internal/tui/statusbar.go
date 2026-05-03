@@ -27,6 +27,7 @@ type StatusBar struct {
 	maxTokens    int
 	state        StatusBarState
 	toolName     string // Name of the tool being executed
+	statusMessage string // Custom status message
 	scrollHint   int    // lines below the viewport; rendered as ↓N when > 0
 	width        int
 	dotPhase     int    // 0..2, cycles to produce ".  " ".. " "..."
@@ -73,6 +74,11 @@ func (s *StatusBar) SetState(state StatusBarState) {
 // SetToolName sets the name of the tool being executed.
 func (s *StatusBar) SetToolName(name string) {
 	s.toolName = name
+}
+
+// SetStatusMessage sets a custom status message.
+func (s *StatusBar) SetStatusMessage(msg string) {
+	s.statusMessage = msg
 }
 
 // SetScrollHint sets the count of lines below the viewport. Non-zero values
@@ -143,6 +149,11 @@ func (s *StatusBar) Render() string {
 }
 
 func (s *StatusBar) renderStatus() string {
+	// If there's a custom status message, show it
+	if s.statusMessage != "" {
+		return s.theme.StatusBarActive.Render(s.statusMessage)
+	}
+
 	switch s.state {
 	case StatusIdle:
 		return s.theme.StatusBarIdle.Render("● ready")

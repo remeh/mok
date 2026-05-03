@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/user/mmok/internal/compaction"
 	"github.com/user/mmok/internal/llm"
 	"github.com/user/mmok/internal/tools"
 )
 
 // AgentConfig holds the configuration values the agent needs.
 type AgentConfig struct {
-	Model     string
-	MaxTokens int
-	CWD       string
+	Model               string
+	MaxTokens           int
+	CWD                 string
+	MaxContextTokens    int
+	CompactionThreshold float64
+	KeepRecentTokens    int
+	SummarizationModel  string
 }
 
 // Agent manages the conversation loop.
@@ -26,6 +31,7 @@ type Agent struct {
 	systemPrompt string
 	lastThinking string
 	debug        *DebugLogger
+	compactor    *compaction.Compactor
 }
 
 // NewAgent creates a new Agent.
@@ -40,6 +46,23 @@ func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry,
 		systemPrompt: prompt,
 		debug:        debug,
 	}
+
+	// Initialize compactor if compaction is configured
+	if cfg.MaxContextTokens > 0 && cfg.CompactionThreshold > 0 {
+		compactionConfig := compaction.CompactionConfig{
+			MaxContextTokens:    cfg.MaxContextTokens,
+			Threshold:           cfg.CompactionThreshold,
+			KeepRecentTokens:    cfg.KeepRecentTokens,
+		}
+		summarizationModel := cfg.SummarizationModel
+		if summarizationModel == "" {
+			summarizationModel = cfg.Model // Use same model if not specified
+		}
+		a.compactor = compaction.NewCompactor(client, compactionConfig, summarizationModel)
+		debug.Info("AGENT", "Compaction configured: max_tokens=%d, threshold=%.2f, keep_recent=%d",
+			cfg.MaxContextTokens, cfg.CompactionThreshold, cfg.KeepRecentTokens)
+	}
+
 	debug.Info("AGENT", "Creating agent with model=%s", cfg.Model)
 	if toolRegistry != nil {
 		debug.Tool("TOOLS", "Registry initialized with %d tools: %s",

@@ -94,6 +94,11 @@ func (s *Screen) SetToolName(name string) {
 	s.statusBar.SetToolName(name)
 }
 
+// SetStatusMessage sets a custom status message.
+func (s *Screen) SetStatusMessage(msg string) {
+	s.statusBar.SetStatusMessage(msg)
+}
+
 // Tick advances the status bar spinner animation and message view cursor frame.
 func (s *Screen) Tick() {
 	s.statusBar.Tick()

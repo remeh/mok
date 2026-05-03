@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -68,9 +69,13 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
 	agt := agent.NewAgent(client, agent.AgentConfig{
-		Model:     cfg.Model,
-		MaxTokens: cfg.MaxTokens,
-		CWD:       cfg.CWD,
+		Model:               cfg.Model,
+		MaxTokens:           cfg.MaxTokens,
+		CWD:                 cfg.CWD,
+		MaxContextTokens:    cfg.MaxContextTokens,
+		CompactionThreshold: cfg.CompactionThreshold,
+		KeepRecentTokens:    cfg.KeepRecentTokens,
+		SummarizationModel:  cfg.SummarizationModel,
 	}, toolRegistry, debug)
 
 	return &AppModel{
@@ -277,6 +282,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		}
 
 		m.Screen.SetStatusBarState(tui.StatusIdle)
+		m.Screen.SetStatusMessage("") // Clear custom status message
 
 	case agent.EventToolCallStart:
 		// Show tool call start with "executing..."
@@ -325,6 +331,24 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		errMsg := types.NewMessage(types.MsgAssistant, "Error: "+ev.Err.Error())
 		m.Messages = append(m.Messages, errMsg)
 		m.Screen.GetMessageView().MessageGrew()
+
+	case agent.EventCompactionStart:
+		m.Screen.SetStatusBarState(tui.StatusCompacting)
+		m.Screen.SetStatusMessage("Compacting context...")
+
+	case agent.EventCompactionEnd:
+		m.Screen.SetStatusBarState(tui.StatusProcessing)
+		m.Screen.SetStatusMessage("Compaction complete")
+		// Optionally show a system message about compaction
+		summaryMsg := types.NewMessage(types.MsgAssistant,
+			fmt.Sprintf("[Compaction: %d → %d tokens, %d messages summarized]",
+				ev.TokensBefore, ev.TokensAfter, ev.MessagesRemoved))
+		m.Messages = append(m.Messages, summaryMsg)
+		m.Screen.GetMessageView().MessageGrew()
+
+	case agent.EventCompactionError:
+		m.Screen.SetStatusBarState(tui.StatusProcessing)
+		m.Screen.SetStatusMessage("Compaction skipped")
 	}
 }
 

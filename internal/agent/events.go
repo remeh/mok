@@ -89,3 +89,27 @@ type EventToolResult struct {
 }
 
 func (EventToolResult) eventType() string { return "tool_result" }
+
+// EventCompactionStart is emitted when compaction begins.
+type EventCompactionStart struct {
+	TokensBefore int
+}
+
+func (EventCompactionStart) eventType() string { return "compaction_start" }
+
+// EventCompactionEnd is emitted when compaction completes.
+type EventCompactionEnd struct {
+	TokensBefore     int
+	TokensAfter      int
+	MessagesRemoved  int
+	SummaryAvailable bool
+}
+
+func (EventCompactionEnd) eventType() string { return "compaction_end" }
+
+// EventCompactionError is emitted when compaction fails.
+type EventCompactionError struct {
+	Err error
+}
+
+func (EventCompactionError) eventType() string { return "compaction_error" }

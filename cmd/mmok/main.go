@@ -149,6 +149,13 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 			if e.Usage != nil {
 				lastUsage = e.Usage
 			}
+		case agent.EventCompactionStart:
+			fmt.Fprintf(os.Stderr, "\n[compaction] starting: %d tokens\n", e.TokensBefore)
+		case agent.EventCompactionEnd:
+			fmt.Fprintf(os.Stderr, "[compaction] complete: %d → %d tokens, %d messages summarized\n",
+				e.TokensBefore, e.TokensAfter, e.MessagesRemoved)
+		case agent.EventCompactionError:
+			fmt.Fprintf(os.Stderr, "[compaction] error: %v\n", e.Err)
 		case agent.EventError:
 			fmt.Fprintf(os.Stderr, "\n[mmok] error: %v\n", e.Err)
 		}
