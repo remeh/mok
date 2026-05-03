@@ -118,6 +118,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 
+		case tea.KeyCtrlZ:
+			return m, tea.Suspend
+
 		case tea.KeyCtrlG:
 			if m.agentRunning {
 				break
