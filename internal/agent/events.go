@@ -41,7 +41,9 @@ type EventMessageEnd struct {
 func (EventMessageEnd) eventType() string { return "message_end" }
 
 // EventTurnEnd is emitted when the turn completes.
-type EventTurnEnd struct{}
+type EventTurnEnd struct {
+	Usage *llm.Usage // Accumulated usage for the full turn
+}
 
 func (EventTurnEnd) eventType() string { return "turn_end" }
 

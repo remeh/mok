@@ -145,6 +145,10 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 			}
 		case agent.EventMessageEnd:
 			lastUsage = e.Usage
+		case agent.EventTurnEnd:
+			if e.Usage != nil {
+				lastUsage = e.Usage
+			}
 		case agent.EventError:
 			fmt.Fprintf(os.Stderr, "\n[mmok] error: %v\n", e.Err)
 		}

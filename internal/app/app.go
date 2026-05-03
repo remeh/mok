@@ -271,6 +271,11 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.cancel = nil
 		m.Screen.GetInputArea().SetFocused(true)
 		m.Screen.SetBlocked(false)
+
+		if ev.Usage != nil {
+			m.Screen.SetTokenCount(ev.Usage.TotalTokens)
+		}
+
 		m.Screen.SetStatusBarState(tui.StatusIdle)
 
 	case agent.EventToolCallStart:

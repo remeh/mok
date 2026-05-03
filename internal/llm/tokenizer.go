@@ -12,7 +12,8 @@ func EstimateTokens(text string) int {
 
 // ContextTracker tracks total context tokens across messages.
 type ContextTracker struct {
-	messages []Message
+	messages   []Message
+	realTokens *int // nil = use estimates; non-nil = use real server-reported count
 }
 
 // NewContextTracker creates a new ContextTracker.
@@ -23,7 +24,11 @@ func NewContextTracker() *ContextTracker {
 }
 
 // TotalTokens returns the estimated total token count.
+// If SetRealTokens was called, returns the real server-reported count instead.
 func (t *ContextTracker) TotalTokens() int {
+	if t.realTokens != nil {
+		return *t.realTokens
+	}
 	total := 0
 	for _, msg := range t.messages {
 		total += EstimateTokens(msg.Content)
@@ -50,4 +55,20 @@ func (t *ContextTracker) RemoveMessages(n int) {
 // Messages returns the tracked messages.
 func (t *ContextTracker) Messages() []Message {
 	return t.messages
+}
+
+// SetRealTokens sets the real token count from the server.
+// This overrides the estimated count for compaction decisions and display.
+func (t *ContextTracker) SetRealTokens(total int) {
+	t.realTokens = &total
+}
+
+// HasRealTokens reports whether a real server-reported token count is set.
+func (t *ContextTracker) HasRealTokens() bool {
+	return t.realTokens != nil
+}
+
+// ClearRealTokens removes the real token count, falling back to estimates.
+func (t *ContextTracker) ClearRealTokens() {
+	t.realTokens = nil
 }

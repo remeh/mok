@@ -29,14 +29,19 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 	debug.Event("AGENT", "Turn started")
 	debug.Event("AGENT", "User message: %q", userMessage)
 
+	// Clear real token count from previous turn so new turn starts with estimates.
+	// Real tokens will be set again at turn-end.
+	a.tracker.ClearRealTokens()
+
 	// Tool call loop: stream → collect → execute tools → repeat (if tool_calls stop)
 	iteration := 0
 	emptyRetries := 0
+	var turnUsage *llm.Usage // accumulated across iterations
 	for {
 		if iteration >= maxToolCallIterations {
 			err := fmt.Errorf("max tool call iterations (%d) reached", maxToolCallIterations)
 			events <- EventError{Err: err}
-			events <- EventTurnEnd{}
+			events <- EventTurnEnd{Usage: turnUsage}
 			debug.Event("AGENT", "Turn ended (max iterations)")
 			return err
 		}
@@ -57,7 +62,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		eventChan, err := a.client.Stream(ctx, req)
 		if err != nil {
 			events <- EventError{Err: err}
-			events <- EventTurnEnd{}
+			events <- EventTurnEnd{Usage: turnUsage}
 			debug.Response("AGENT", "Stream failed: %v", err)
 			return err
 		}
@@ -126,15 +131,32 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 			case "done":
 				usage = event.Usage
 				stopReason = event.Stop
+				// Accumulate usage across iterations.
+				// CompletionTokens are additive (generated across calls).
+				// PromptTokens are cumulative (each call sees a larger context),
+				// so we keep only the last value as the final context size.
+				// TotalTokens = final context + generated tokens.
 				if usage != nil {
-					debug.Response("EVENT", "message_end: usage={PromptTokens=%d CompletionTokens=%d}",
-						usage.PromptTokens, usage.CompletionTokens)
+					if turnUsage == nil {
+						turnUsage = &llm.Usage{
+							PromptTokens:     usage.PromptTokens,
+							CompletionTokens: usage.CompletionTokens,
+							TotalTokens:      usage.TotalTokens,
+						}
+					} else {
+						turnUsage.CompletionTokens += usage.CompletionTokens
+						turnUsage.PromptTokens = usage.PromptTokens
+						turnUsage.TotalTokens = turnUsage.PromptTokens + turnUsage.CompletionTokens
+					}
+					debug.Response("EVENT", "message_end: usage={PromptTokens=%d CompletionTokens=%d} (accumulated: PromptTokens=%d CompletionTokens=%d)",
+						usage.PromptTokens, usage.CompletionTokens,
+						turnUsage.PromptTokens, turnUsage.CompletionTokens)
 				}
 				debug.Event("EVENT", "stop_reason=%s", stopReason)
 
 			case "error":
 				events <- EventError{Err: event.Err}
-				events <- EventTurnEnd{}
+				events <- EventTurnEnd{Usage: turnUsage}
 				debug.Event("EVENT", "error: %v", event.Err)
 				return event.Err
 			}
@@ -154,7 +176,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 			}
 			err := fmt.Errorf("model returned empty response after %d retries", quirks.MaxEmptyRetries)
 			events <- EventError{Err: err}
-			events <- EventTurnEnd{}
+			events <- EventTurnEnd{Usage: turnUsage}
 			debug.Event("AGENT", "Turn ended (empty response after retries)")
 			return err
 		}
@@ -245,7 +267,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 
 				// If all tool calls were invalid, skip execution entirely
 				if len(toolCallOrder) == 0 {
-					events <- EventMessageEnd{Usage: usage}
+					events <- EventMessageEnd{Usage: turnUsage}
 					iteration++
 					continue
 				}
@@ -323,7 +345,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 					tc.ID, tc.Name, !isError, len(result))
 			}
 
-			events <- EventMessageEnd{Usage: usage}
+			events <- EventMessageEnd{Usage: turnUsage}
 
 			// Loop back for next LLM call with tool results in context
 			iteration++
@@ -338,8 +360,16 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		// Store thinking text separately so TUI can render it
 		a.lastThinking = thinkingText.String()
 
-		events <- EventMessageEnd{Usage: usage}
-		events <- EventTurnEnd{}
+		// Update tracker with real token count from the server.
+		// Do this *before* emitting EventMessageEnd so the TUI can read
+		// accurate context token counts during tool execution and between
+		// message ends within a single turn.
+		if turnUsage != nil {
+			a.tracker.SetRealTokens(turnUsage.TotalTokens)
+		}
+
+		events <- EventMessageEnd{Usage: turnUsage}
+		events <- EventTurnEnd{Usage: turnUsage}
 		debug.Event("AGENT", "Turn completed successfully")
 		return nil
 	}
