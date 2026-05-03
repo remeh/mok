@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"sort"
 
 	"github.com/user/mmok/internal/llm"
 )
@@ -46,12 +47,17 @@ func (r *Registry) Get(name string) Tool {
 	return r.tools[name]
 }
 
-// All returns all registered tools in insertion order.
+// All returns all registered tools sorted by name. Sorting keeps the order
+// deterministic across calls and processes so the system prompt and tool
+// list stay stable for prompt-cache prefix reuse.
 func (r *Registry) All() []Tool {
 	result := make([]Tool, 0, len(r.tools))
 	for _, t := range r.tools {
 		result = append(result, t)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Definition().Name < result[j].Definition().Name
+	})
 	return result
 }
 
@@ -61,10 +67,13 @@ func (r *Registry) Has(name string) bool {
 	return ok
 }
 
-// ToSpecs converts all registered tools to the API wire format.
+// ToSpecs converts all registered tools to the API wire format. Specs are
+// sorted by name so the wire-format tools array is byte-identical across
+// requests, which is required for prompt-cache prefix matching.
 func (r *Registry) ToSpecs() []llm.ToolSpec {
-	specs := make([]llm.ToolSpec, 0, len(r.tools))
-	for _, t := range r.tools {
+	all := r.All()
+	specs := make([]llm.ToolSpec, 0, len(all))
+	for _, t := range all {
 		def := t.Definition()
 		specs = append(specs, llm.ToolSpec{
 			Type: "function",
