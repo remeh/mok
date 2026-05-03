@@ -143,9 +143,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.abortAgent()
 				break
 			}
-			if m.Screen.IsScrolledUp() {
-				break
-			}
 			input := m.Screen.GetInputArea().Value()
 			if input != "" {
 				if quitCmd := m.submitMessage(input); quitCmd != nil {
@@ -186,9 +183,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.agentRunning {
 				break
 			}
-			if m.Screen.IsScrolledUp() {
-				break
-			}
 			handled := m.Screen.GetInputArea().HandleKey(msg.Type)
 			if !handled && msg.Type == tea.KeyRunes {
 				for _, r := range msg.Runes {
@@ -218,8 +212,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch {
 					case msgAtClick.Type == types.MsgToolResult && msgAtClick.Summary != "":
 						msgAtClick.Collapsed = !msgAtClick.Collapsed
+						m.Screen.GetMessageView().MessageGrew()
 					case msgAtClick.ThinkingText != "":
 						msgAtClick.ThinkingExpanded = !msgAtClick.ThinkingExpanded
+						m.Screen.GetMessageView().MessageGrew()
 					}
 				}
 			}
@@ -251,16 +247,19 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.streamMsg = types.NewMessage(types.MsgAssistant, "")
 		m.streamMsg.Streaming = true
 		m.Messages = append(m.Messages, m.streamMsg)
+		m.Screen.GetMessageView().MessageGrew()
 		m.Screen.SetStatusBarState(tui.StatusStreaming)
 
 	case agent.EventTextDelta:
 		if m.streamMsg != nil {
 			m.streamMsg.Content += ev.Text
+			m.Screen.GetMessageView().MessageGrew()
 		}
 
 	case agent.EventThinkingDelta:
 		if m.streamMsg != nil {
 			m.streamMsg.ThinkingText += ev.Text
+			m.Screen.GetMessageView().MessageGrew()
 		}
 
 	case agent.EventMessageEnd:
@@ -284,6 +283,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		// Show tool call start with "executing..."
 		toolCallMsg := types.NewToolCall(ev.Name, ev.RawArgs)
 		m.Messages = append(m.Messages, toolCallMsg)
+		m.Screen.GetMessageView().MessageGrew()
 		m.Screen.SetStatusBarState(tui.StatusToolCall)
 		m.Screen.SetToolName(ev.Name)
 
@@ -293,6 +293,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 			last := m.Messages[len(m.Messages)-1]
 			if last.Type == types.MsgToolCall {
 				last.ToolArgs = ev.RawArgs
+				m.Screen.GetMessageView().MessageGrew()
 			}
 		}
 
@@ -302,6 +303,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 			last := m.Messages[len(m.Messages)-1]
 			if last.Type == types.MsgToolCall {
 				last.ToolArgs = ev.Args
+				m.Screen.GetMessageView().MessageGrew()
 			}
 		}
 
@@ -309,6 +311,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		// Show tool result
 		resultMsg := types.NewToolResult(ev.Name, ev.Result, ev.IsError)
 		m.Messages = append(m.Messages, resultMsg)
+		m.Screen.GetMessageView().MessageGrew()
 		m.Screen.SetToolName("")
 		// Reset status to thinking since agent will decide next action
 		m.Screen.SetStatusBarState(tui.StatusThinking)
@@ -321,6 +324,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.Screen.SetStatusBarState(tui.StatusError)
 		errMsg := types.NewMessage(types.MsgAssistant, "Error: "+ev.Err.Error())
 		m.Messages = append(m.Messages, errMsg)
+		m.Screen.GetMessageView().MessageGrew()
 	}
 }
 
@@ -333,10 +337,15 @@ func (m *AppModel) abortAgent() {
 
 // expandAllToolResults expands all collapsed tool result messages.
 func (m *AppModel) expandAllToolResults() {
+	changed := false
 	for _, msg := range m.Messages {
 		if msg.Type == types.MsgToolResult && msg.Collapsed {
 			msg.Collapsed = false
+			changed = true
 		}
+	}
+	if changed {
+		m.Screen.GetMessageView().MessageGrew()
 	}
 }
 

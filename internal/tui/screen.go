@@ -3,7 +3,6 @@ package tui
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/user/mmok/internal/types"
 )
 
@@ -29,11 +28,16 @@ func NewScreen(theme Theme) *Screen {
 }
 
 // SetDimensions updates all component dimensions.
+//
+// Layout is fixed (no conditional rows): the message view always claims
+// h - 2 lines, the input always claims 1, the status bar always claims 1.
+// The scroll-position indicator lives inside the status bar (↓N segment),
+// not as its own row, so the message-view height is constant and content
+// never jumps when the user crosses the scrolled/at-bottom boundary.
 func (s *Screen) SetDimensions(w, h int) {
 	s.width = w
 	s.height = h
 
-	// Reserve 2 lines for input + status bar (base case)
 	contentHeight := h - 2
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -43,25 +47,6 @@ func (s *Screen) SetDimensions(w, h int) {
 	s.msgView.SetReservedLines(2)
 	s.inputArea.SetWidth(w)
 	s.statusBar.SetWidth(w)
-}
-
-// adjustMessageViewHeight adjusts the message view height based on whether
-// the scroll indicator is shown. Called during Render to handle dynamic layout.
-func (s *Screen) adjustMessageViewHeight() {
-	contentHeight := s.height - 2
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-
-	// If scrolled up, we need an extra line for the scroll indicator
-	if s.msgView.IsScrolledUp() {
-		contentHeight--
-	}
-
-	// Only adjust if height changed to avoid unnecessary reinitialization
-	if s.msgView.height != contentHeight {
-		s.msgView.SetDimensions(s.width, contentHeight)
-	}
 }
 
 // SetMessages updates the message view.
@@ -123,35 +108,18 @@ func (s *Screen) SetStreaming(streaming bool) {
 }
 
 // Render returns the complete screen as a string.
+//
+// Fixed layout: three sections, no conditional rows. The status bar carries
+// the ↓N scroll hint when the message view is scrolled above the bottom.
 func (s *Screen) Render() string {
-	// Adjust message view height based on scroll indicator visibility
-	s.adjustMessageViewHeight()
+	s.statusBar.SetScrollHint(s.msgView.LinesBelow())
 
-	msgLines := s.msgView.Render()
-
-	var bottomLines string
-	if s.msgView.IsScrolledUp() {
-		// Show scroll indicator above the input area
-		indicator := s.RenderScrollIndicator()
-		bottomLines = indicator + "\n" + s.inputArea.Render()
-	} else {
-		bottomLines = s.inputArea.Render()
+	parts := []string{
+		s.msgView.Render(),
+		s.inputArea.Render(),
+		s.statusBar.Render(),
 	}
-
-	statusLine := s.statusBar.Render()
-
-	parts := []string{msgLines, bottomLines, statusLine}
 	return strings.Join(parts, "\n")
-}
-
-// RenderScrollIndicator returns a line showing "vvvvvvv" on a white background.
-func (s *Screen) RenderScrollIndicator() string {
-	indicator := s.theme.ScrollIndicator.Render("vvvvvvv")
-	renderedWidth := lipgloss.Width(indicator)
-	if renderedWidth < s.width {
-		indicator += StringsRepeat(" ", s.width-renderedWidth)
-	}
-	return indicator
 }
 
 // IsScrolledUp returns true when the message view is scrolled above the bottom.

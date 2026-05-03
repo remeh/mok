@@ -21,15 +21,16 @@ const (
 
 // StatusBar renders the bottom status bar.
 type StatusBar struct {
-	theme          Theme
-	model          string
-	tokenCount     int
-	maxTokens      int
-	state          StatusBarState
-	toolName       string // Name of the tool being executed
-	width          int
-	spinnerFrame   int
-	lastUpdate     time.Time
+	theme        Theme
+	model        string
+	tokenCount   int
+	maxTokens    int
+	state        StatusBarState
+	toolName     string // Name of the tool being executed
+	scrollHint   int    // lines below the viewport; rendered as ↓N when > 0
+	width        int
+	spinnerFrame int
+	lastUpdate   time.Time
 }
 
 // Spinner frames for activity indicator
@@ -73,6 +74,15 @@ func (s *StatusBar) SetToolName(name string) {
 	s.toolName = name
 }
 
+// SetScrollHint sets the count of lines below the viewport. Non-zero values
+// render as a ↓N segment so the user knows there's content out of view.
+func (s *StatusBar) SetScrollHint(linesBelow int) {
+	if linesBelow < 0 {
+		linesBelow = 0
+	}
+	s.scrollHint = linesBelow
+}
+
 // SetWidth sets the bar width.
 func (s *StatusBar) SetWidth(width int) {
 	s.width = width
@@ -92,7 +102,8 @@ func (s *StatusBar) Render() string {
 	// Left: model name
 	left := s.theme.StatusBar.Render(s.model)
 
-	// Center: token count / context usage
+	// Center: token count / context usage, optionally followed by ↓N hint
+	// when there is content scrolled below the viewport.
 	var tokenInfo string
 	if s.maxTokens > 0 {
 		pct := float64(s.tokenCount) / float64(s.maxTokens) * 100
@@ -100,13 +111,17 @@ func (s *StatusBar) Render() string {
 	} else {
 		tokenInfo = fmt.Sprintf("%d tokens", s.tokenCount)
 	}
-	center := s.theme.StatusBar.Render(tokenInfo)
+	middle := s.theme.StatusBar.Render(tokenInfo)
+	if s.scrollHint > 0 {
+		hint := s.theme.StatusBarActive.Render(fmt.Sprintf("↓%d", s.scrollHint))
+		middle = middle + " " + hint
+	}
 
 	// Right: status with spinner when active
 	right := s.renderStatus()
 
 	// Combine with spacing
-	totalLen := lipgloss.Width(left) + lipgloss.Width(center) + lipgloss.Width(right) + 4
+	totalLen := lipgloss.Width(left) + lipgloss.Width(middle) + lipgloss.Width(right) + 4
 	padding := s.width - totalLen
 	if padding < 0 {
 		padding = 0
@@ -118,7 +133,7 @@ func (s *StatusBar) Render() string {
 	return fmt.Sprintf("%s%s %s %s%s",
 		s.theme.StatusBar.Render(StringsRepeat(" ", leftPad)),
 		left,
-		center,
+		middle,
 		right,
 		s.theme.StatusBar.Render(StringsRepeat(" ", rightPad)))
 }

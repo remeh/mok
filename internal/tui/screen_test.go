@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/user/mmok/internal/types"
@@ -135,5 +136,61 @@ func TestScreenGetMessageView(t *testing.T) {
 
 	if view == nil {
 		t.Fatal("GetMessageView should not return nil")
+	}
+}
+
+// TestScreenLayoutFixedAcrossScroll is the Phase 3 invariant: the message
+// view height is constant regardless of scroll state. Before Phase 3 the
+// indicator stole a row when the user scrolled up, causing content to jump.
+func TestScreenLayoutFixedAcrossScroll(t *testing.T) {
+	screen := setupScreen(t)
+	screen.SetDimensions(80, 20)
+	for i := 0; i < 50; i++ {
+		screen.AddMessage(types.NewMessage(types.MsgUser, "msg"))
+	}
+
+	heightAtBottom := screen.msgView.height
+
+	screen.GetMessageView().ScrollPageUp()
+	_ = screen.Render()
+	heightScrolledUp := screen.msgView.height
+
+	if heightAtBottom != heightScrolledUp {
+		t.Errorf("msgView height changed across scroll: at-bottom=%d, scrolled-up=%d",
+			heightAtBottom, heightScrolledUp)
+	}
+}
+
+// TestScreenRenderIncludesScrollHintWhenScrolled verifies the indicator now
+// lives in the status bar rather than as a separate row.
+func TestScreenRenderIncludesScrollHintWhenScrolled(t *testing.T) {
+	screen := setupScreen(t)
+	screen.SetDimensions(120, 20)
+	for i := 0; i < 50; i++ {
+		screen.AddMessage(types.NewMessage(types.MsgUser, "msg"))
+	}
+	screen.GetMessageView().ScrollPageUp()
+
+	rendered := screen.Render()
+	if !strings.Contains(rendered, "↓") {
+		t.Errorf("Render should contain ↓ scroll hint when scrolled up: %q", rendered)
+	}
+}
+
+// TestScreenRenderHasFixedRowCount asserts Render() always emits exactly
+// h - 2 (msg) + 1 (input) + 1 (status) = h rows, regardless of scroll state.
+func TestScreenRenderHasFixedRowCount(t *testing.T) {
+	screen := setupScreen(t)
+	screen.SetDimensions(80, 20)
+	for i := 0; i < 50; i++ {
+		screen.AddMessage(types.NewMessage(types.MsgUser, "msg"))
+	}
+
+	atBottom := strings.Count(screen.Render(), "\n")
+	screen.GetMessageView().ScrollPageUp()
+	scrolledUp := strings.Count(screen.Render(), "\n")
+
+	if atBottom != scrolledUp {
+		t.Errorf("Render row count differs: at-bottom=%d newlines, scrolled-up=%d", atBottom, scrolledUp)
 	}
 }

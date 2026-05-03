@@ -133,6 +133,30 @@ func TestStatusBarZeroTokens(t *testing.T) {
 	}
 }
 
+func TestStatusBarScrollHint(t *testing.T) {
+	bar := setupStatusBar(t)
+	bar.SetWidth(120)
+
+	// No hint when zero.
+	rendered := bar.Render()
+	if strings.Contains(rendered, "↓") {
+		t.Errorf("Render should not contain ↓ when scrollHint is 0: %q", rendered)
+	}
+
+	// Hint visible when set.
+	bar.SetScrollHint(42)
+	rendered = bar.Render()
+	if !strings.Contains(rendered, "↓42") {
+		t.Errorf("Render should contain ↓42: %q", rendered)
+	}
+
+	// Negative clamped to zero.
+	bar.SetScrollHint(-5)
+	if bar.scrollHint != 0 {
+		t.Errorf("scrollHint = %d, want 0 after negative input", bar.scrollHint)
+	}
+}
+
 func TestStatusBarStates(t *testing.T) {
 	states := []StatusBarState{
 		StatusIdle,
