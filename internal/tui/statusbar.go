@@ -15,7 +15,7 @@ const (
 	StatusStreaming  StatusBarState = "streaming"
 	StatusCompacting StatusBarState = "compacting"
 	StatusError      StatusBarState = "error"
-	StatusThinking   StatusBarState = "thinking"
+	StatusProcessing StatusBarState = "processing"
 	StatusToolCall   StatusBarState = "tool_call"
 )
 
@@ -149,8 +149,8 @@ func (s *StatusBar) renderStatus() string {
 			return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " executing: " + s.toolName)
 		}
 		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " executing tool...")
-	case StatusThinking:
-		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " thinking...")
+	case StatusProcessing:
+		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " processing...")
 	case StatusStreaming:
 		return s.theme.StatusBarActive.Render(spinnerFrames[s.spinnerFrame] + " streaming...")
 	case StatusCompacting:

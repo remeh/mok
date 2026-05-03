@@ -77,10 +77,10 @@ func TestStatusBarSetState(t *testing.T) {
 		t.Errorf("Render() should contain error state: %q", rendered)
 	}
 
-	bar.SetState(StatusThinking)
+	bar.SetState(StatusProcessing)
 	rendered = bar.Render()
-	if !strings.Contains(rendered, "thinking...") {
-		t.Errorf("Render() should contain thinking state: %q", rendered)
+	if !strings.Contains(rendered, "processing...") {
+		t.Errorf("Render() should contain processing state: %q", rendered)
 	}
 
 	bar.SetState(StatusIdle)
@@ -163,7 +163,7 @@ func TestStatusBarStates(t *testing.T) {
 		StatusStreaming,
 		StatusCompacting,
 		StatusError,
-		StatusThinking,
+		StatusProcessing,
 	}
 
 	expected := map[StatusBarState]bool{
@@ -171,7 +171,7 @@ func TestStatusBarStates(t *testing.T) {
 		StatusStreaming:  true,
 		StatusCompacting: true,
 		StatusError:      true,
-		StatusThinking:   true,
+		StatusProcessing:   true,
 	}
 
 	for _, state := range states {

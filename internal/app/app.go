@@ -241,7 +241,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *AppModel) handleAgentEvent(event agent.Event) {
 	switch ev := event.(type) {
 	case agent.EventTurnStart:
-		m.Screen.SetStatusBarState(tui.StatusThinking)
+		m.Screen.SetStatusBarState(tui.StatusProcessing)
 
 	case agent.EventMessageStart:
 		m.streamMsg = types.NewMessage(types.MsgAssistant, "")
@@ -270,7 +270,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 			m.Screen.SetTokenCount(ev.Usage.TotalTokens)
 		}
 		// Agent is deciding its next action (more LLM calls or turn end)
-		m.Screen.SetStatusBarState(tui.StatusThinking)
+		m.Screen.SetStatusBarState(tui.StatusProcessing)
 
 	case agent.EventTurnEnd:
 		m.agentRunning = false
@@ -314,7 +314,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.Screen.GetMessageView().MessageGrew()
 		m.Screen.SetToolName("")
 		// Reset status to thinking since agent will decide next action
-		m.Screen.SetStatusBarState(tui.StatusThinking)
+		m.Screen.SetStatusBarState(tui.StatusProcessing)
 
 	case agent.EventError:
 		m.agentRunning = false
@@ -449,7 +449,7 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 
 	m.agentRunning = true
 	m.Screen.GetInputArea().SetFocused(false)
-	m.Screen.SetStatusBarState(tui.StatusThinking)
+	m.Screen.SetStatusBarState(tui.StatusProcessing)
 
 	// Create a fresh event channel for this turn.
 	m.eventChan = make(chan agentEvent, 128)
