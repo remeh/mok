@@ -125,6 +125,9 @@ func loadFromEnv(cfg *Config) error {
 	if v, ok := envMap["DEBUG"]; ok && v == "true" {
 		cfg.Debug = true
 	}
+	if v, ok := envMap["UI_LOG_PATH"]; ok && v != "" {
+		cfg.UILogPath = v
+	}
 
 	return nil
 }
@@ -152,6 +155,9 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	}
 	if v, ok := flags["debug"]; ok && v == "true" {
 		cfg.Debug = true
+	}
+	if v, ok := flags["ui-log-path"]; ok && v != "" {
+		cfg.UILogPath = v
 	}
 }
 
@@ -181,5 +187,7 @@ func mergeConfig(dst, src *Config) {
 	if src.Debug {
 		dst.Debug = true
 	}
-
+	if src.UILogPath != "" {
+		dst.UILogPath = src.UILogPath
+	}
 }

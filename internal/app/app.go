@@ -29,6 +29,7 @@ type AppModel struct {
 	Agent          *agent.Agent
 	Messages       []*types.Message
 	Debug          *agent.DebugLogger
+	UILogWriter    *UILogWriter
 	width          int
 	height         int
 	editorTempFile string // path to temp file used by Ctrl-G editor
@@ -78,13 +79,24 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		SummarizationModel:  cfg.SummarizationModel,
 	}, toolRegistry, debug)
 
+	// Create UI log writer (always on, default path is "ui.log").
+	var uiLogWriter *UILogWriter
+	var err error
+	uiLogWriter, err = NewUILogWriter(cfg.UILogPath, cfg.Model, cfg.Endpoint)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: ui log: %v\n", err)
+	} else if debug != nil {
+		debug.Info("APP", "UI logging enabled, writing to %s", cfg.UILogPath)
+	}
+
 	return &AppModel{
-		Config:    cfg,
-		Screen:    screen,
-		Agent:     agt,
-		Debug:     debug,
-		Messages:  make([]*types.Message, 0),
-		eventChan: make(chan agentEvent, 128),
+		Config:      cfg,
+		Screen:      screen,
+		Agent:       agt,
+		Debug:       debug,
+		UILogWriter: uiLogWriter,
+		Messages:    make([]*types.Message, 0),
+		eventChan:   make(chan agentEvent, 128),
 	}, nil
 }
 
@@ -113,6 +125,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			if m.Debug != nil {
 				m.Debug.Close()
+			}
+			if m.UILogWriter != nil {
+				m.UILogWriter.Close()
 			}
 			return m, tea.Quit
 
@@ -237,6 +252,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleAgentEvent processes a single event from the agent loop.
 func (m *AppModel) handleAgentEvent(event agent.Event) {
+	// Log the event to the UI log if enabled.
+	if m.UILogWriter != nil {
+		m.UILogWriter.WriteEvent(event)
+	}
+
 	switch ev := event.(type) {
 	case agent.EventTurnStart:
 		m.Screen.SetStatusBarState(tui.StatusProcessing)
@@ -472,6 +492,11 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 
 	userMsg := types.NewMessage(types.MsgUser, text)
 	m.Messages = append(m.Messages, userMsg)
+
+	// Log user input to the UI log.
+	if m.UILogWriter != nil {
+		m.UILogWriter.LogUserInput(text)
+	}
 	m.Screen.GetInputArea().SetValue("")
 	m.Screen.GetInputArea().PushHistory()
 	m.Screen.SetMessages(m.Messages)

@@ -14,6 +14,7 @@ type Config struct {
 	SummarizationModel  string  `yaml:"summarization_model"`
 	MaxTokens           int     `yaml:"max_tokens"`
 	Debug               bool    `yaml:"debug"`
+	UILogPath           string  `yaml:"ui_log_path"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -27,5 +28,6 @@ func DefaultConfig() *Config {
 		CompactionThreshold: 0.8,
 		KeepRecentTokens:    16384,
 		MaxTokens:           0,
+		UILogPath:           "ui.log",
 	}
 }
