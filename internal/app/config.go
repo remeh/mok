@@ -128,6 +128,20 @@ func loadFromEnv(cfg *Config) error {
 	if v, ok := envMap["UI_LOG_PATH"]; ok && v != "" {
 		cfg.UILogPath = v
 	}
+	if v, ok := envMap["ENABLE_MULTILINE"]; ok && v == "true" {
+		cfg.EnableMultiLine = true
+	}
+	if v, ok := envMap["ENABLE_AUTOCOMPLETE"]; ok && v == "true" {
+		cfg.EnableAutocomplete = true
+	}
+	if v, ok := envMap["AUTOCOMPLETE_MAX_ITEMS"]; ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.AutocompleteMaxItems = n
+		}
+	}
+	if v, ok := envMap["TAB_COMPLETES"]; ok && v == "true" {
+		cfg.TabCompletes = true
+	}
 
 	return nil
 }
@@ -159,6 +173,20 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	if v, ok := flags["ui-log-path"]; ok && v != "" {
 		cfg.UILogPath = v
 	}
+	if v, ok := flags["enable-multiline"]; ok && v == "true" {
+		cfg.EnableMultiLine = true
+	}
+	if v, ok := flags["enable-autocomplete"]; ok && v == "true" {
+		cfg.EnableAutocomplete = true
+	}
+	if v, ok := flags["autocomplete-max-items"]; ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.AutocompleteMaxItems = n
+		}
+	}
+	if v, ok := flags["tab-completes"]; ok && v == "true" {
+		cfg.TabCompletes = true
+	}
 }
 
 // mergeConfig overlays non-zero values from src onto dst.
@@ -189,5 +217,17 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.UILogPath != "" {
 		dst.UILogPath = src.UILogPath
+	}
+	if src.EnableMultiLine {
+		dst.EnableMultiLine = src.EnableMultiLine
+	}
+	if src.EnableAutocomplete {
+		dst.EnableAutocomplete = src.EnableAutocomplete
+	}
+	if src.AutocompleteMaxItems > 0 {
+		dst.AutocompleteMaxItems = src.AutocompleteMaxItems
+	}
+	if src.TabCompletes {
+		dst.TabCompletes = src.TabCompletes
 	}
 }

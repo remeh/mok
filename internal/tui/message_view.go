@@ -76,6 +76,14 @@ func (v *MessageView) MessageGrew() {
 	v.maybeFollowTail()
 }
 
+// Clear removes all messages and resets the view.
+func (v *MessageView) Clear() {
+	v.messages = nil
+	v.rendered = nil
+	v.scrollPos = 0
+	v.pinned = false
+}
+
 // maybeFollowTail snaps scrollPos to the bottom of the rendered content,
 // unless the user has explicitly pinned the scroll position.
 func (v *MessageView) maybeFollowTail() {

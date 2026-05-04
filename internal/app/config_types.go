@@ -15,6 +15,12 @@ type Config struct {
 	MaxTokens           int     `yaml:"max_tokens"`
 	Debug               bool    `yaml:"debug"`
 	UILogPath           string  `yaml:"ui_log_path"`
+
+	// Input behavior
+	EnableMultiLine      bool `yaml:"enable_multiline"`       // Enable multi-line editing
+	EnableAutocomplete   bool `yaml:"enable_autocomplete"`    // Enable command autocomplete
+	AutocompleteMaxItems int  `yaml:"autocomplete_max_items"` // Max suggestions to show
+	TabCompletes         bool `yaml:"tab_completes"`          // Enable Tab for completion
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -29,5 +35,11 @@ func DefaultConfig() *Config {
 		KeepRecentTokens:    16384,
 		MaxTokens:           0,
 		UILogPath:           "ui.log",
+
+		// Input behavior defaults
+		EnableMultiLine:      true,
+		EnableAutocomplete:   true,
+		AutocompleteMaxItems: 10,
+		TabCompletes:         true,
 	}
 }

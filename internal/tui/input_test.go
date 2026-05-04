@@ -604,3 +604,228 @@ func TestInputSetLinesEmpty(t *testing.T) {
 		t.Errorf("GetLines() length = %d, want 1 (should have single empty line)", len(lines))
 	}
 }
+
+func TestInputAutocompleteAutoActivateOnSlash(t *testing.T) {
+	input := setupInput(t)
+
+	// Register some commands
+	registry := NewCommandRegistry()
+	registry.Register(CommandDefinition{
+		Name:        "model",
+		Description: "Change model",
+		HasArgs:     true,
+		ArgValues:   []string{"gemma4", "qwen3.5"},
+	})
+	registry.Register(CommandDefinition{
+		Name:        "debug",
+		Description: "Toggle debug",
+		HasArgs:     true,
+		ArgValues:   []string{"on", "off"},
+	})
+	registry.Register(CommandDefinition{
+		Name:        "clear",
+		Description: "Clear conversation",
+		HasArgs:     false,
+	})
+	input.SetCommandRegistry(registry)
+
+	// Test 1: Typing '/' at position (0,0) should activate autocomplete
+	input.SetValue("")
+	input.cursorRow = 0
+	input.cursorCol = 0
+	input.HandleRune('/')
+	if !input.AutocompleteIsActive() {
+		t.Error("Autocomplete should be active after typing '/' at position (0,0)")
+	}
+	suggestions := input.GetAutocompleteState().GetSuggestions()
+	if len(suggestions) == 0 {
+		t.Error("Should have suggestions after typing '/' at position (0,0)")
+	}
+
+	// Test 2: Typing '/' after space should NOT activate autocomplete (only at position 0,0)
+	// First, reset autocomplete state from Test 1
+	input.DismissAutocomplete()
+	input.SetValue("test ")
+	input.cursorRow = 0
+	input.cursorCol = len([]rune("test "))
+	input.HandleRune('/')
+	if input.AutocompleteIsActive() {
+		t.Error("Autocomplete should NOT be active after typing '/' after space (only at position 0,0)")
+	}
+
+	// Test 3: Typing '/' in the middle of a word should NOT activate autocomplete
+	input.SetValue("test")
+	input.cursorRow = 0
+	input.cursorCol = 2 // cursor in middle of "test"
+	input.HandleRune('/')
+	// Note: This will insert '/' making it "te/st", but autocomplete should not activate
+	// because '/' was not at position (0,0)
+}
+
+func TestInputAutocompleteRemainsInactiveOnRegularChars(t *testing.T) {
+	input := setupInput(t)
+
+	// Register commands
+	registry := NewCommandRegistry()
+	registry.Register(CommandDefinition{
+		Name:        "model",
+		Description: "Change model",
+		HasArgs:     true,
+	})
+	input.SetCommandRegistry(registry)
+
+	// Typing regular characters should not activate autocomplete
+	input.SetValue("")
+	input.HandleRune('h')
+	if input.AutocompleteIsActive() {
+		t.Error("Autocomplete should not be active after typing regular character")
+	}
+}
+
+func TestInputAcceptAutocompleteBoundsCheck(t *testing.T) {
+	input := setupInput(t)
+
+	// Register commands
+	registry := NewCommandRegistry()
+	registry.Register(CommandDefinition{
+		Name:        "model",
+		Description: "Change model",
+		HasArgs:     true,
+		ArgValues:   []string{"gemma4", "qwen3.5"},
+	})
+	input.SetCommandRegistry(registry)
+
+	// Setup: activate autocomplete with a longer text
+	input.SetValue("/model gemma4")
+	input.cursorRow = 0
+	input.cursorCol = len("/model gemma4")
+
+	// Manually activate autocomplete to simulate the state
+	// (normally this happens via TryActivateAutocomplete)
+	input.autocomplete.ActivateCommandCompletion("", 0, registry)
+
+	// Simulate the bug scenario: text gets shorter but insertPos stays the same
+	// This can happen if user deletes characters after autocomplete activates
+	input.SetValue("x") // Short text, but autocomplete still has old insertPos
+
+	// This should not panic even though insertPos (0) is now valid
+	// but the scenario tests that we handle edge cases
+	input.AcceptAutocomplete()
+
+	// Verify no crash occurred and autocomplete is deactivated
+	if input.AutocompleteIsActive() {
+		t.Error("Autocomplete should be deactivated after AcceptAutocomplete")
+	}
+}
+
+func TestInputAcceptAutocompleteInsertPosExceedsText(t *testing.T) {
+	input := setupInput(t)
+
+	// Register commands
+	registry := NewCommandRegistry()
+	registry.Register(CommandDefinition{
+		Name:        "model",
+		Description: "Change model",
+		HasArgs:     true,
+		ArgValues:   []string{"gemma4", "qwen3.5"},
+	})
+	input.SetCommandRegistry(registry)
+
+	// Setup: activate autocomplete
+	input.SetValue("/model")
+	input.cursorRow = 0
+	input.cursorCol = len("/model")
+
+	// Activate command completion
+	input.TryActivateAutocomplete()
+
+	// Simulate the panic scenario: user deletes characters, making text shorter
+	// but autocomplete state still has the old insertPos
+	// Manually set a large insertPos to simulate the bug
+	input.autocomplete.insertPos = 100 // Way beyond text length
+
+	// This should not panic - the fix should clamp insertPos to len(text)
+	input.AcceptAutocomplete()
+
+	// Verify no crash and autocomplete is deactivated
+	if input.AutocompleteIsActive() {
+		t.Error("Autocomplete should be deactivated after AcceptAutocomplete")
+	}
+
+	// The text should have been modified (even if just appending at end)
+	// since we accepted a suggestion
+}
+
+func TestInputHandleKeyEscDismissesAutocomplete(t *testing.T) {
+	input := setupInput(t)
+
+	// Register some commands
+	registry := NewCommandRegistry()
+	registry.Register(CommandDefinition{
+		Name:        "model",
+		Description: "Change model",
+		HasArgs:     true,
+		ArgValues:   []string{"gemma4", "qwen3.5"},
+	})
+	registry.Register(CommandDefinition{
+		Name:        "debug",
+		Description: "Toggle debug",
+		HasArgs:     true,
+		ArgValues:   []string{"on", "off"},
+	})
+	input.SetCommandRegistry(registry)
+
+	// Activate autocomplete by typing '/' at position (0,0)
+	input.SetValue("")
+	input.cursorRow = 0
+	input.cursorCol = 0
+	input.HandleRune('/')
+
+	if !input.AutocompleteIsActive() {
+		t.Fatal("Autocomplete should be active after typing '/'")
+	}
+
+	// Press ESC to dismiss autocomplete
+	handled := input.HandleKey(tea.KeyEsc)
+
+	if !handled {
+		t.Error("HandleKey should return true for ESC when autocomplete is active")
+	}
+
+	if input.AutocompleteIsActive() {
+		t.Error("Autocomplete should be deactivated after pressing ESC")
+	}
+}
+
+func TestInputHandleKeyEscWhenNotFocused(t *testing.T) {
+	input := setupInput(t)
+	input.focused = false
+
+	// Autocomplete should not be active
+	input.SetValue("/model")
+
+	handled := input.HandleKey(tea.KeyEsc)
+
+	if handled {
+		t.Error("HandleKey should return false when input is not focused")
+	}
+}
+
+func TestInputHandleKeyEscExitsHistoryMode(t *testing.T) {
+	input := setupInput(t)
+
+	// Setup: put input in history mode
+	input.historyMode = true
+	input.historyIdx = -1
+	input.originalValue = ""
+
+	handled := input.HandleKey(tea.KeyEsc)
+
+	if !handled {
+		t.Error("HandleKey should return true for ESC in history mode")
+	}
+
+	if input.historyMode {
+		t.Error("historyMode should be false after pressing ESC")
+	}
+}

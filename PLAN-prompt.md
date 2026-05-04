@@ -281,47 +281,76 @@ Transitions:
 | Home | Move to text start |
 | End | Move to text end |
 
-### Phase 3: Command Registry & Autocomplete Core
+### Phase 3: Command Registry & Autocomplete Core ✅
 
 **Goal:** Build autocomplete infrastructure
 
 **Tasks:**
-1. Create `CommandDefinition` and `CommandRegistry` types
-2. Implement command registration and lookup
-3. Implement prefix matching for command completion
-4. Implement value completion for specific commands
-5. Add `AutocompleteState` to `InputArea`
-6. Implement Tab key to trigger autocomplete
-7. Implement Escape to dismiss autocomplete
-8. Implement arrow key selection within suggestions
+1. ✅ Create `CommandDefinition` and `CommandRegistry` types
+2. ✅ Implement command registration and lookup
+3. ✅ Implement prefix matching for command completion
+4. ✅ Implement value completion for specific commands
+5. ✅ Add `AutocompleteState` to `InputArea`
+6. ✅ Implement Tab key to trigger autocomplete
+7. ✅ Implement Escape to dismiss autocomplete
+8. ✅ Implement arrow key selection within suggestions
 
 **Files to create:**
-- `internal/tui/autocomplete.go` (new file for autocomplete logic)
+- ✅ `internal/tui/autocomplete.go` (new file for autocomplete logic)
 
 **Files to modify:**
-- `internal/tui/input.go`
-- `internal/app/app.go` (register commands)
+- ✅ `internal/tui/input.go`
+- ✅ `internal/app/app.go` (register commands)
 
-### Phase 4: Autocomplete UI Rendering
+**Status:** Complete
+
+**New Features:**
+- **Command Registry**: Centralized command management with prefix matching
+- **Value Completion**: Argument value autocomplete for commands with args
+- **Tab Completion**: Press Tab to activate/navigate suggestions
+- **Escape Dismiss**: Escape key closes autocomplete
+- **Arrow Navigation**: Up/Down arrows navigate suggestions when active
+- **Real-time Filtering**: Suggestions update as you type
+- **Built-in Commands**: `/model`, `/debug`, `/clear`, `/quit`, `/exit`, `/help`
+- **Configuration**: Enable/disable via config, env vars, or CLI flags
+
+### Phase 4: Autocomplete UI Rendering ✅
 
 **Goal:** Display autocomplete suggestions visually
 
 **Tasks:**
-1. Add autocomplete styles to `Theme`
-2. Create `AutocompleteView` component (similar to `MessageView`)
-3. Implement rendering of suggestion list
-4. Integrate autocomplete rendering into `Screen.Render()`
-5. Adjust message view height when autocomplete is active
-6. Add scroll support for long suggestion lists
-7. Show command descriptions in suggestion panel
+1. ✅ Add autocomplete styles to `Theme`
+2. ✅ Create `AutocompleteView` component (similar to `MessageView`)
+3. ✅ Implement rendering of suggestion list
+4. ✅ Integrate autocomplete rendering into `Screen.Render()`
+5. ✅ Adjust message view height when autocomplete is active
+6. ✅ Add scroll support for long suggestion lists
+7. ✅ Show command descriptions in suggestion panel
 
 **Files to create:**
-- `internal/tui/autocomplete_view.go` (new file)
+- ✅ `internal/tui/autocomplete_view.go` (new file)
 
 **Files to modify:**
-- `internal/tui/theme.go`
-- `internal/tui/screen.go`
-- `internal/tui/input.go` (add RenderAutocomplete method)
+- ✅ `internal/tui/theme.go`
+- ✅ `internal/tui/screen.go`
+- ✅ `internal/tui/input.go` (add RenderAutocomplete method)
+
+**Status:** Complete
+
+**New Features:**
+- **Autocomplete Panel:** Visual dropdown showing command/value suggestions
+- **Selected Item Highlighting:** Current selection highlighted with different background
+- **Prefix Display:** Shows the current prefix being matched
+- **Scroll Support:** Handles more suggestions than can fit in visible area
+- **Dynamic Sizing:** Message view adjusts height when autocomplete is active
+- **Styled Output:** Consistent styling with the rest of the TUI
+
+**Autocomplete UI Components:**
+- Panel with rounded border
+- Prefix header showing current match
+- Suggestion list with selection indicator (▸)
+- Selected item with highlighted background
+- Max 10 visible suggestions with scrolling
 
 ### Phase 5: Integration & Polish
 

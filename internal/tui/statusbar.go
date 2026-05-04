@@ -130,8 +130,8 @@ func (s *StatusBar) Render() string {
 	// Right: status with dot animation when active
 	right := s.renderStatus()
 
-	// Combine with spacing
-	totalLen := lipgloss.Width(left) + lipgloss.Width(middle) + lipgloss.Width(right) + 4
+	// Calculate padding for centering
+	totalLen := lipgloss.Width(left) + lipgloss.Width(middle) + lipgloss.Width(right) + 2
 	padding := s.width - totalLen
 	if padding < 0 {
 		padding = 0
@@ -140,10 +140,14 @@ func (s *StatusBar) Render() string {
 	leftPad := padding / 2
 	rightPad := padding - leftPad
 
-	return fmt.Sprintf("%s%s %s %s%s",
+	// Combine with spacing - ensure spaces between segments have the same background
+	spacer := s.theme.StatusBar.Render(" ")
+	return fmt.Sprintf("%s%s%s%s%s%s%s",
 		s.theme.StatusBar.Render(StringsRepeat(" ", leftPad)),
 		left,
+		spacer,
 		middle,
+		spacer,
 		right,
 		s.theme.StatusBar.Render(StringsRepeat(" ", rightPad)))
 }

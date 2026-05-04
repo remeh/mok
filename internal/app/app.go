@@ -69,6 +69,45 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 	toolRegistry.Add(&tools.EditTool{CWD: cfg.CWD})
 	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
+	// Create command registry and register built-in commands
+	cmdRegistry := tui.NewCommandRegistry()
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "model",
+		Description: "Change model",
+		HasArgs:     true,
+		ArgValues:   []string{cfg.Model}, // Start with current model, can be expanded
+	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "debug",
+		Description: "Toggle debug mode",
+		HasArgs:     true,
+		ArgValues:   []string{"on", "off"},
+	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "clear",
+		Description: "Clear conversation",
+		HasArgs:     false,
+	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "quit",
+		Description: "Exit application",
+		HasArgs:     false,
+	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "exit",
+		Description: "Exit application",
+		HasArgs:     false,
+	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "help",
+		Description: "Show available commands",
+		HasArgs:     false,
+	})
+
+	// Pass command registry to input area
+	inputArea := screen.GetInputArea()
+	inputArea.SetCommandRegistry(cmdRegistry)
+
 	agt := agent.NewAgent(client, agent.AgentConfig{
 		Model:               cfg.Model,
 		MaxTokens:           cfg.MaxTokens,
@@ -134,6 +173,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEsc:
 			if m.agentRunning {
 				m.abortAgent()
+			} else {
+				// Let input area handle ESC (dismiss autocomplete, exit history mode)
+				_ = m.Screen.GetInputArea().HandleKey(msg.Type)
 			}
 
 		case tea.KeyCtrlZ:
@@ -160,6 +202,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.abortAgent()
 				break
 			}
+			// Accept autocomplete if active (without inserting newline)
+			if m.Screen.GetInputArea().AutocompleteIsActive() {
+				m.Screen.GetInputArea().AcceptAutocomplete()
+			}
+			// Get the input value (autocomplete may have been accepted)
 			input := m.Screen.GetInputArea().Value()
 			if input != "" {
 				if quitCmd := m.submitMessage(input); quitCmd != nil {
@@ -466,32 +513,74 @@ func (m *AppModel) View() string {
 }
 
 // handleCommand processes slash commands. Returns a tea.Cmd if handled.
-func (m *AppModel) handleCommand(text string) tea.Cmd {
+func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 	text = strings.TrimSpace(text)
 	if !strings.HasPrefix(text, "/") {
-		return nil
+		return nil, false
 	}
 
-	cmd := strings.ToLower(strings.TrimSpace(text[1:]))
+	// Parse command and arguments
+	parts := strings.Fields(text[1:]) // Remove leading slash and split
+	if len(parts) == 0 {
+		return nil, false
+	}
+
+	cmd := strings.ToLower(parts[0])
+
 	switch cmd {
 	case "exit", "quit":
 		m.quitting = true
 		if m.Debug != nil {
 			m.Debug.Close()
 		}
-		return tea.Quit
+		if m.UILogWriter != nil {
+			m.UILogWriter.Close()
+		}
+		return tea.Quit, true
+
+	case "clear":
+		m.Messages = make([]*types.Message, 0)
+		m.Screen.GetMessageView().Clear()
+		return nil, true
+
+	case "help":
+		// Show help message
+		helpText := "Available commands:\n"
+		helpText += "  /model <name>  - Change model\n"
+		helpText += "  /debug on|off  - Toggle debug mode\n"
+		helpText += "  /clear         - Clear conversation\n"
+		helpText += "  /quit | /exit  - Exit application\n"
+		helpText += "  /help          - Show this help\n"
+
+		helpMsg := types.NewSystemMessage(helpText)
+		m.Messages = append(m.Messages, helpMsg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil, true
+
 	default:
-		return nil
+		msg := types.NewSystemMessage("unknown command: " + text)
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil, true
 	}
+
+	return nil, false
 }
 
 // submitMessage adds a user message and starts the agent loop.
 // Returns the first polling cmd to kick off the event pipeline.
 func (m *AppModel) submitMessage(text string) tea.Cmd {
-	if quitCmd := m.handleCommand(text); quitCmd != nil {
+	quitCmd, interpreted := m.handleCommand(text)
+	if quitCmd != nil {
 		m.Screen.GetInputArea().SetValue("")
 		m.Screen.GetInputArea().PushHistory()
 		return quitCmd
+	}
+	// the command has been interpreted, we don't have to go further
+	// but we have to clear the prompt
+	if interpreted {
+		m.Screen.GetInputArea().SetValue("")
+		return nil
 	}
 
 	userMsg := types.NewMessage(types.MsgUser, text)

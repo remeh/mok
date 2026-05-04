@@ -26,20 +26,31 @@ type InputArea struct {
 	historyMode    bool   // true when browsing history
 	originalValue  string // saved value when entering history
 	originalCursor int    // saved cursor position (byte position in flattened text)
+
+	// Autocomplete state
+	autocomplete    *AutocompleteState
+	commandRegistry *CommandRegistry
 }
 
 // NewInputArea creates a new InputArea.
 func NewInputArea(theme Theme, prompt string) *InputArea {
 	return &InputArea{
-		theme:        theme,
-		prompt:       prompt,
-		lines:        []string{""},
-		cursorRow:    0,
-		cursorCol:    0,
-		scrollOffset: 0,
-		historyIdx:   -1,
-		focused:      true,
+		theme:           theme,
+		prompt:          prompt,
+		lines:           []string{""},
+		cursorRow:       0,
+		cursorCol:       0,
+		scrollOffset:    0,
+		historyIdx:      -1,
+		focused:         true,
+		autocomplete:    NewAutocompleteState(),
+		commandRegistry: NewCommandRegistry(),
 	}
+}
+
+// SetCommandRegistry sets the command registry for autocomplete.
+func (i *InputArea) SetCommandRegistry(registry *CommandRegistry) {
+	i.commandRegistry = registry
 }
 
 // SetFocused sets whether the input area accepts keystrokes.
@@ -344,7 +355,11 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 	if i.historyMode {
 		switch msg {
 		case tea.KeyUp, tea.KeyDown:
-			// Stay in history mode for up/down
+			// Stay in history mode for up/down navigation
+			// These keys are handled below
+		case tea.KeyEsc:
+			// ESC will be handled in the main switch (dismiss autocomplete, then exit history mode)
+			// Fall through to the main switch
 		default:
 			i.exitHistoryMode()
 		}
@@ -352,23 +367,21 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 
 	switch msg {
 	case tea.KeyEnter:
-		// Insert newline: split current line at cursor, create new line
-		currentLine := i.lines[i.cursorRow]
-		runes := []rune(currentLine)
-		if i.cursorCol >= len(runes) {
-			// Cursor at end of line: append empty new line
-			i.lines = append(i.lines[:i.cursorRow+1], append([]string{""}, i.lines[i.cursorRow+1:]...)...)
-		} else {
-			// Cursor in middle of line: split line
-			afterCursor := string(runes[i.cursorCol:])
-			i.lines[i.cursorRow] = string(runes[:i.cursorCol])
-			i.lines = append(i.lines[:i.cursorRow+1], append([]string{afterCursor}, i.lines[i.cursorRow+1:]...)...)
+		// Accept autocomplete if active, then insert newline
+		if i.autocomplete.IsActive() {
+			i.AcceptAutocompleteAndContinue()
+			return true
 		}
-		i.cursorRow++
-		i.cursorCol = 0
+		i.insertNewline()
 		return true
 
 	case tea.KeyUp:
+		// If autocomplete is active, navigate suggestions
+		if i.autocomplete.IsActive() {
+			i.autocomplete.SelectPrevious()
+			return true
+		}
+
 		// If at line start (row=0, col=0), navigate history up
 		if i.cursorRow == 0 && i.cursorCol == 0 && len(i.history) > 0 {
 			if !i.historyMode {
@@ -388,6 +401,12 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		return true
 
 	case tea.KeyDown:
+		// If autocomplete is active, navigate suggestions
+		if i.autocomplete.IsActive() {
+			i.autocomplete.SelectNext()
+			return true
+		}
+
 		// If at line start and at last line, navigate history down
 		if i.cursorRow == len(i.lines)-1 && i.cursorCol == 0 && len(i.history) > 0 {
 			if !i.historyMode {
@@ -432,6 +451,10 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			// Delete character before cursor in current line
 			currentLine := i.lines[i.cursorRow]
 			runes := []rune(currentLine)
+			// Check if we're deleting the '/' at position (0,0) - should dismiss autocomplete
+			if i.autocomplete.IsActive() && i.cursorRow == 0 && i.cursorCol == 1 && len(runes) > 0 && runes[i.cursorCol-1] == '/' {
+				i.DismissAutocomplete()
+			}
 			i.lines[i.cursorRow] = string(runes[:i.cursorCol-1]) + string(runes[i.cursorCol:])
 			i.cursorCol--
 		} else if i.cursorRow > 0 {
@@ -496,6 +519,14 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		return true
 
 	case tea.KeyCtrlH, tea.KeyCtrlW: // Ctrl+H or Ctrl+W: delete word before
+		// Check if we're deleting the '/' at position (0,0) - should dismiss autocomplete
+		if i.autocomplete.IsActive() && i.cursorRow == 0 && i.cursorCol == 1 {
+			currentLine := i.lines[i.cursorRow]
+			runes := []rune(currentLine)
+			if len(runes) > 0 && runes[0] == '/' {
+				i.DismissAutocomplete()
+			}
+		}
 		i.deleteWordBefore()
 		return true
 
@@ -508,6 +539,14 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		return true
 
 	case tea.KeyCtrlU: // Ctrl+U: delete from start of line to cursor
+		// Check if we're deleting the '/' at position (0,0) - should dismiss autocomplete
+		if i.autocomplete.IsActive() && i.cursorRow == 0 && i.cursorCol == 1 {
+			currentLine := i.lines[i.cursorRow]
+			runes := []rune(currentLine)
+			if len(runes) > 0 && runes[0] == '/' {
+				i.DismissAutocomplete()
+			}
+		}
 		currentLine := i.lines[i.cursorRow]
 		runes := []rune(currentLine)
 		if i.cursorCol > 0 {
@@ -523,6 +562,33 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 	case tea.KeyEnd: // Move to end of text
 		i.moveToTextEnd()
 		return true
+
+	case tea.KeyTab: // Tab: activate or navigate autocomplete
+		// Exit history mode if active
+		if i.historyMode {
+			i.exitHistoryMode()
+		}
+
+		if !i.autocomplete.IsActive() {
+			// Try to activate autocomplete
+			i.TryActivateAutocomplete()
+		} else {
+			// Navigate suggestions
+			i.autocomplete.SelectNext()
+		}
+		return true
+
+	case tea.KeyEsc: // Escape: dismiss autocomplete
+		if i.autocomplete.IsActive() {
+			i.DismissAutocomplete()
+			return true
+		}
+		// Also exit history mode
+		if i.historyMode {
+			i.exitHistoryMode()
+			return true
+		}
+		return false
 	}
 
 	return false
@@ -536,21 +602,25 @@ func (i *InputArea) HandleRune(r rune) {
 
 	// Handle newline character
 	if r == '\n' {
-		// Insert newline: split current line at cursor, create new line
-		currentLine := i.lines[i.cursorRow]
-		runes := []rune(currentLine)
-		if i.cursorCol >= len(runes) {
-			// Cursor at end of line: append empty new line
-			i.lines = append(i.lines[:i.cursorRow+1], append([]string{""}, i.lines[i.cursorRow+1:]...)...)
+		// Accept autocomplete on newline if active, then insert newline
+		if i.autocomplete.IsActive() {
+			i.AcceptAutocompleteAndContinue()
 		} else {
-			// Cursor in middle of line: split line
-			afterCursor := string(runes[i.cursorCol:])
-			i.lines[i.cursorRow] = string(runes[:i.cursorCol])
-			i.lines = append(i.lines[:i.cursorRow+1], append([]string{afterCursor}, i.lines[i.cursorRow+1:]...)...)
+			i.insertNewline()
 		}
-		i.cursorRow++
-		i.cursorCol = 0
 		return
+	}
+
+	// If autocomplete is active and we're typing, filter suggestions
+	if i.autocomplete.IsActive() {
+		if r == ' ' || r == '\t' {
+			// Accept current selection on space/tab
+			i.AcceptAutocomplete()
+			// Continue with normal insertion
+		} else if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsPunct(r) && !unicode.IsSymbol(r) {
+			// Dismiss autocomplete on special characters (except letters, digits, punctuation, symbols)
+			i.DismissAutocomplete()
+		}
 	}
 
 	// Insert character at cursor position in current line
@@ -559,6 +629,31 @@ func (i *InputArea) HandleRune(r rune) {
 	insertPos := i.cursorCol
 	i.lines[i.cursorRow] = string(runes[:insertPos]) + string(r) + string(runes[insertPos:])
 	i.cursorCol++
+
+	// Auto-activate autocomplete when / is typed at position (0,0) - very first line, very first char
+	if r == '/' && !i.autocomplete.IsActive() {
+		// Only activate if we're on the first line (row 0) and this is the first character (cursorCol == 1 after insertion)
+		// Also verify the line was empty before insertion (runes slice is empty, meaning we're inserting the first char)
+		if i.cursorRow == 0 && i.cursorCol == 1 && len(runes) == 0 {
+			i.TryActivateAutocomplete()
+		}
+	}
+
+	// Update autocomplete filter after inserting character
+	if i.autocomplete.IsActive() {
+		cursorPos := i.GetCursorPos()
+		text := i.Value()
+		prefix, _, _, compType := GetPrefixAtCursor(text, cursorPos)
+
+		switch compType {
+		case CompletionCommand:
+			i.autocomplete.Filter(prefix, i.commandRegistry)
+		case CompletionValue:
+			i.autocomplete.Filter(prefix, i.commandRegistry)
+		default:
+			i.autocomplete.Deactivate()
+		}
+	}
 }
 
 // Render returns the styled multi-line input.
@@ -681,6 +776,124 @@ func (i *InputArea) Render() string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// GetCursorPos returns the current cursor position as a flattened byte offset.
+func (i *InputArea) GetCursorPos() int {
+	return i.getCurrentFlattenedPos()
+}
+
+// SetCursorPos sets the cursor position from a flattened byte offset.
+func (i *InputArea) SetCursorPos(pos int) {
+	i.setCursorFromFlattenedPos(pos)
+}
+
+// TryActivateAutocomplete attempts to activate autocomplete at the current cursor position.
+// Returns true if autocomplete was activated.
+func (i *InputArea) TryActivateAutocomplete() bool {
+	if i.commandRegistry == nil || i.autocomplete == nil {
+		return false
+	}
+
+	cursorPos := i.GetCursorPos()
+	text := i.Value()
+
+	prefix, cmdName, insertPos, compType := GetPrefixAtCursor(text, cursorPos)
+
+	switch compType {
+	case CompletionCommand:
+		i.autocomplete.ActivateCommandCompletion(prefix, insertPos, i.commandRegistry)
+		return true
+	case CompletionValue:
+		i.autocomplete.ActivateValueCompletion(cmdName, prefix, insertPos, i.commandRegistry)
+		return true
+	default:
+		i.autocomplete.Deactivate()
+		return false
+	}
+}
+
+// AcceptAutocomplete accepts the currently selected suggestion without inserting a newline.
+func (i *InputArea) AcceptAutocomplete() {
+	if !i.autocomplete.IsActive() || !i.autocomplete.HasSuggestions() {
+		return
+	}
+
+	suggestion := i.autocomplete.GetSelected()
+	insertPos := i.autocomplete.GetInsertPos()
+	text := i.Value()
+
+	// Clamp insertPos to valid range to prevent slice bounds panic
+	if insertPos < 0 || insertPos > len(text) {
+		insertPos = len(text)
+	}
+
+	// Build new text with completion
+	var newText string
+	if i.autocomplete.GetCompletionType() == CompletionCommand {
+		// For commands, add the suggestion
+		newText = text[:insertPos] + suggestion
+		// Add space after command if it has args
+		cmd := i.commandRegistry.Get(suggestion)
+		if cmd != nil && cmd.HasArgs {
+			newText += " "
+		}
+	} else {
+		// For values, replace the prefix
+		newText = text[:insertPos] + suggestion
+	}
+
+	i.SetValue(newText)
+
+	// Move cursor to end of inserted text
+	newCursorPos := insertPos + len(suggestion)
+	if i.autocomplete.GetCompletionType() == CompletionCommand {
+		cmd := i.commandRegistry.Get(suggestion)
+		if cmd != nil && cmd.HasArgs {
+			newCursorPos++ // account for added space
+		}
+	}
+	i.SetCursorPos(newCursorPos)
+
+	i.autocomplete.Deactivate()
+}
+
+// AcceptAutocompleteAndContinue inserts a newline after accepting autocomplete.
+func (i *InputArea) AcceptAutocompleteAndContinue() {
+	i.AcceptAutocomplete()
+	i.insertNewline()
+}
+
+// insertNewline inserts a newline at the current cursor position, splitting the line.
+func (i *InputArea) insertNewline() {
+	currentLine := i.lines[i.cursorRow]
+	runes := []rune(currentLine)
+	if i.cursorCol >= len(runes) {
+		// Cursor at end of line: append empty new line
+		i.lines = append(i.lines[:i.cursorRow+1], append([]string{""}, i.lines[i.cursorRow+1:]...)...)
+	} else {
+		// Cursor in middle of line: split line
+		afterCursor := string(runes[i.cursorCol:])
+		i.lines[i.cursorRow] = string(runes[:i.cursorCol])
+		i.lines = append(i.lines[:i.cursorRow+1], append([]string{afterCursor}, i.lines[i.cursorRow+1:]...)...)
+	}
+	i.cursorRow++
+	i.cursorCol = 0
+}
+
+// DismissAutocomplete deactivates autocomplete without accepting.
+func (i *InputArea) DismissAutocomplete() {
+	i.autocomplete.Deactivate()
+}
+
+// AutocompleteIsActive returns whether autocomplete is currently active.
+func (i *InputArea) AutocompleteIsActive() bool {
+	return i.autocomplete.IsActive()
+}
+
+// GetAutocompleteState returns the current autocomplete state.
+func (i *InputArea) GetAutocompleteState() *AutocompleteState {
+	return i.autocomplete
 }
 
 // Input rendering uses shared StringsRepeat from utils.go

@@ -21,6 +21,13 @@ type Theme struct {
 	Panel               lipgloss.Style
 	Dim                 lipgloss.Style
 	Bold                lipgloss.Style
+
+	// Autocomplete styles
+	AutocompletePanel        lipgloss.Style
+	AutocompleteItem         lipgloss.Style
+	AutocompleteItemSelected lipgloss.Style
+	AutocompleteDescription  lipgloss.Style
+	AutocompletePrefix       lipgloss.Style
 }
 
 // DefaultTheme returns the default color scheme.
@@ -43,5 +50,12 @@ func DefaultTheme() Theme {
 		Panel:               lipgloss.NewStyle().MarginLeft(1).MarginRight(1),
 		Dim:                 lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
 		Bold:                lipgloss.NewStyle().Bold(true),
+
+		// Autocomplete styles
+		AutocompletePanel:        lipgloss.NewStyle().Background(lipgloss.Color("236")).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")),
+		AutocompleteItem:         lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("252")).PaddingLeft(2).PaddingRight(2),
+		AutocompleteItemSelected: lipgloss.NewStyle().Background(lipgloss.Color("63")).Foreground(lipgloss.Color("232")).Bold(true).PaddingLeft(2).PaddingRight(2),
+		AutocompleteDescription:  lipgloss.NewStyle().Foreground(lipgloss.Color("243")).PaddingLeft(2),
+		AutocompletePrefix:       lipgloss.NewStyle().Foreground(lipgloss.Color("144")).Bold(true),
 	}
 }

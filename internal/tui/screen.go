@@ -12,6 +12,7 @@ type Screen struct {
 	msgView   *MessageView
 	inputArea *InputArea
 	statusBar *StatusBar
+	autocompleteView *AutocompleteView
 	width     int
 	height    int
 	streaming bool
@@ -20,10 +21,11 @@ type Screen struct {
 // NewScreen creates a new Screen with all sub-components.
 func NewScreen(theme Theme) *Screen {
 	return &Screen{
-		theme:     theme,
-		msgView:   NewMessageView(theme),
-		inputArea: NewInputArea(theme, ">"),
-		statusBar: NewStatusBar(theme),
+		theme:            theme,
+		msgView:          NewMessageView(theme),
+		inputArea:        NewInputArea(theme, ">"),
+		statusBar:        NewStatusBar(theme),
+		autocompleteView: NewAutocompleteView(theme),
 	}
 }
 
@@ -32,6 +34,7 @@ func NewScreen(theme Theme) *Screen {
 // Layout: the message view takes remaining space, the input area grows
 // with its content (up to a max), and the status bar always claims 1 line.
 // The scroll-position indicator lives inside the status bar (↓N segment).
+// If autocomplete is active, it reduces the message view height to show suggestions.
 func (s *Screen) SetDimensions(w, h int) {
 	s.width = w
 	s.height = h
@@ -45,8 +48,22 @@ func (s *Screen) SetDimensions(w, h int) {
 		inputHeight = 10 // Cap input height
 	}
 
+	// Check if autocomplete is active
+	autocompleteHeight := 0
+	if s.inputArea.AutocompleteIsActive() {
+		autocompleteState := s.inputArea.GetAutocompleteState()
+		prefix := autocompleteState.GetPrefix()
+		autocompleteHeight = s.autocompleteView.GetHeight(autocompleteState, prefix)
+	}
+
 	// Status bar takes 1 line, input takes inputHeight lines
-	contentHeight := h - 1 - inputHeight
+	// If autocomplete is active, also reserve space for it
+	totalBottomHeight := 1 + inputHeight
+	if autocompleteHeight > 0 {
+		totalBottomHeight += autocompleteHeight
+	}
+
+	contentHeight := h - totalBottomHeight
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -55,6 +72,9 @@ func (s *Screen) SetDimensions(w, h int) {
 	s.msgView.SetReservedLines(2)
 	s.inputArea.SetWidth(w)
 	s.statusBar.SetWidth(w)
+
+	// Set autocomplete view dimensions - use full width
+	s.autocompleteView.SetDimensions(w, 0) // Full width, descriptionWidth not used
 }
 
 // SetMessages updates the message view.
@@ -127,16 +147,27 @@ func (s *Screen) SetStreaming(streaming bool) {
 
 // Render returns the complete screen as a string.
 //
-// Fixed layout: three sections, no conditional rows. The status bar carries
-// the ↓N scroll hint when the message view is scrolled above the bottom.
+// Fixed layout: message view, input area, optional autocomplete panel, status bar.
+// The status bar carries the ↓N scroll hint when the message view is scrolled above the bottom.
 func (s *Screen) Render() string {
 	s.statusBar.SetScrollHint(s.msgView.LinesBelow())
 
 	parts := []string{
 		s.msgView.Render(),
 		s.inputArea.Render(),
-		s.statusBar.Render(),
 	}
+
+	// Render autocomplete panel if active
+	autocompleteState := s.inputArea.GetAutocompleteState()
+	if autocompleteState != nil && autocompleteState.IsActive() {
+		prefix := autocompleteState.GetPrefix()
+		autocompletePanel := s.autocompleteView.Render(autocompleteState, prefix)
+		if autocompletePanel != "" {
+			parts = append(parts, autocompletePanel)
+		}
+	}
+
+	parts = append(parts, s.statusBar.Render())
 	return strings.Join(parts, "\n")
 }
 
