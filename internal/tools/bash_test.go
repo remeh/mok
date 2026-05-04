@@ -66,13 +66,65 @@ func TestBashToolExecute_WithStderr(t *testing.T) {
 	}
 }
 
-func TestBashToolExecute_CommandError(t *testing.T) {
+func TestBashToolExecute_NonZeroExitCode(t *testing.T) {
 	tool, _ := setupBashTool(t)
 
-	args, _ := json.Marshal(BashArgs{Command: "exit 1"})
-	_, err := tool.Execute(json.RawMessage(args))
-	if err == nil {
-		t.Error("expected error for exit code 1")
+	// Exit code 1 with output - includes exit code in output, does NOT return error
+	args, _ := json.Marshal(BashArgs{Command: "echo some output; exit 1"})
+	result, err := tool.Execute(json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("non-zero exit should not return error, got: %v", err)
+	}
+	if !strings.Contains(result, "some output") {
+		t.Errorf("result should contain output, got: %s", result)
+	}
+	if !strings.Contains(result, "[exit code: 1]") {
+		t.Errorf("result should contain exit code, got: %s", result)
+	}
+
+	// Empty output with non-zero exit
+	args, _ = json.Marshal(BashArgs{Command: "exit 42"})
+	result, err = tool.Execute(json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("non-zero exit should not return error, got: %v", err)
+	}
+	if result != "[exit code: 42]" {
+		t.Errorf("result should just be exit code, got: %s", result)
+	}
+
+	// Grep with no matches returns exit code 1 - this is information, not failure
+	args, _ = json.Marshal(BashArgs{Command: "echo 'line one\nline two' | grep 'three'"})
+	result, err = tool.Execute(json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("grep exit code 1 should not return error, got: %v", err)
+	}
+	if !strings.Contains(result, "[exit code: 1]") {
+		t.Errorf("grep no-match should report exit code 1, got: %s", result)
+	}
+
+	// diff with differences returns exit code 1
+	args, _ = json.Marshal(BashArgs{Command: "diff <(echo a) <(echo b)"})
+	result, err = tool.Execute(json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("diff exit code 1 should not return error, got: %v", err)
+	}
+	if !strings.Contains(result, "[exit code: 1]") {
+		t.Errorf("diff with differences should report exit code 1, got: %s", result)
+	}
+}
+
+func TestBashToolExecute_InvalidCommand(t *testing.T) {
+	tool, _ := setupBashTool(t)
+
+	// Unknown binary - returns output with exit code 127, not an error.
+	// The LLM gets the shell's "command not found" message so it can reason about it.
+	args, _ := json.Marshal(BashArgs{Command: "doesnotexistquux 2>&1"})
+	result, err := tool.Execute(json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("command-not-found should not return error, got: %v", err)
+	}
+	if !strings.Contains(result, "[exit code: 127]") && !strings.Contains(result, "not found") {
+		t.Errorf("result should contain exit code 127 or 'not found', got: %s", result)
 	}
 }
 

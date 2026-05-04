@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -41,6 +42,7 @@ Usage notes:
 - Do NOT use for reading file contents (use the read tool) or editing files (use the edit tool).
 - Output is truncated to 2000 lines / 50KB. For commands with large output, pipe through head/tail/grep.
 - The command runs to completion before returning. For interactive commands, this will hang until timeout.
+- Exit codes are included in the output (e.g., [exit code: 1]). A non-zero exit code is not always a failure — for example, grep returns 1 when no matches are found, diff returns 1 when files differ, and test/[ ] returns 1 for false conditions. Review the output and exit code together to determine the actual outcome.
 
 Example call: {"command": "git status", "timeout": 10}`,
 		Snippet: "Run a shell command with stdout/stderr capture",
@@ -110,47 +112,49 @@ func (t *BashTool) Execute(args json.RawMessage) (string, error) {
 
 	select {
 	case err := <-done:
+		output := buildOutput(stdout.String(), stderr.String())
 		if err != nil {
-			// Command exited with error
-			output := truncateOutput(stdout.String())
-			errOutput := truncateOutput(stderr.String())
-
-			var sb strings.Builder
-			if output != "" {
-				sb.WriteString(output)
-			}
-			if errOutput != "" {
-				if sb.Len() > 0 {
-					sb.WriteString("\n")
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				// Command ran but exited with a non-zero code. This is normal
+				// for many tools (e.g. grep with no matches = 1, diff with
+				// differences = 1). Include the exit code so the LLM can
+				// reason about it, but do not return an error.
+				exitCode := exitErr.ExitCode()
+				if output != "" {
+					output += fmt.Sprintf("\n[exit code: %d]", exitCode)
+				} else {
+					output = fmt.Sprintf("[exit code: %d]", exitCode)
 				}
-				sb.WriteString(errOutput)
+				return output, nil
 			}
-
-			return sb.String(), fmt.Errorf("exit code %d", cmd.ProcessState.ExitCode())
+			// Command failed to run (e.g. binary not found, permission denied to start)
+			return output, fmt.Errorf("failed to run command: %w", err)
 		}
-
-		// Success
-		output := truncateOutput(stdout.String())
-		errOutput := truncateOutput(stderr.String())
-
-		var sb strings.Builder
-		if output != "" {
-			sb.WriteString(output)
-		}
-		if errOutput != "" {
-			if sb.Len() > 0 {
-				sb.WriteString("\n")
-			}
-			sb.WriteString(errOutput)
-		}
-
-		return sb.String(), nil
+		return output, nil
 
 	case <-time.After(timeout):
 		cmd.Process.Kill()
 		<-done
 		return "", fmt.Errorf("command timed out after %v", timeout)
 	}
+}
+
+func buildOutput(stdout, stderr string) string {
+	output := truncateOutput(stdout)
+	errOutput := truncateOutput(stderr)
+
+	var sb strings.Builder
+	if output != "" {
+		sb.WriteString(output)
+	}
+	if errOutput != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(errOutput)
+	}
+	return sb.String()
 }
 
 func truncateOutput(output string) string {
