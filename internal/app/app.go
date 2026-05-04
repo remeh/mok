@@ -168,14 +168,19 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyUp, tea.KeyDown:
-			if m.Screen.GetInputArea().Value() == "" || m.Screen.IsScrolledUp() {
+			if m.agentRunning {
+				break
+			}
+			// Let input area handle Up/Down first (it handles history navigation at line start)
+			inputHandled := m.Screen.GetInputArea().HandleKey(msg.Type)
+
+			// If input area didn't handle it (empty input, not at line start), scroll messages
+			if !inputHandled && m.Screen.IsScrolledUp() {
 				if msg.Type == tea.KeyUp {
 					m.Screen.GetMessageView().ScrollUp()
 				} else {
 					m.Screen.GetMessageView().ScrollDown()
 				}
-			} else {
-				m.Screen.GetInputArea().HandleKey(msg.Type)
 			}
 
 		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyCtrlU, tea.KeyCtrlD:
@@ -455,7 +460,6 @@ func (m *AppModel) View() string {
 	}
 
 	m.Screen.SetMessages(m.Messages)
-	m.Screen.SetInputValue(m.Screen.GetInputArea().Value())
 	m.Screen.SetStreaming(m.streamMsg != nil && m.streamMsg.Streaming)
 
 	return m.Screen.Render()

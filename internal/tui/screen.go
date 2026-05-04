@@ -29,16 +29,24 @@ func NewScreen(theme Theme) *Screen {
 
 // SetDimensions updates all component dimensions.
 //
-// Layout is fixed (no conditional rows): the message view always claims
-// h - 2 lines, the input always claims 1, the status bar always claims 1.
-// The scroll-position indicator lives inside the status bar (↓N segment),
-// not as its own row, so the message-view height is constant and content
-// never jumps when the user crosses the scrolled/at-bottom boundary.
+// Layout: the message view takes remaining space, the input area grows
+// with its content (up to a max), and the status bar always claims 1 line.
+// The scroll-position indicator lives inside the status bar (↓N segment).
 func (s *Screen) SetDimensions(w, h int) {
 	s.width = w
 	s.height = h
 
-	contentHeight := h - 2
+	// Calculate input area height based on number of lines
+	inputHeight := s.inputArea.GetVisibleHeight()
+	if inputHeight < 1 {
+		inputHeight = 1
+	}
+	if inputHeight > 10 {
+		inputHeight = 10 // Cap input height
+	}
+
+	// Status bar takes 1 line, input takes inputHeight lines
+	contentHeight := h - 1 - inputHeight
 	if contentHeight < 1 {
 		contentHeight = 1
 	}

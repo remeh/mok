@@ -101,8 +101,9 @@ func RepairJSON(raw string) string {
 }
 
 // CloseJSON closes unclosed strings, arrays, and objects:
-//   {"key": "val  →  {"key": "val"}
-//   ["a", "b"     →  ["a", "b"]
+//
+//	{"key": "val  →  {"key": "val"}
+//	["a", "b"     →  ["a", "b"]
 func CloseJSON(raw string) string {
 	// First repair any common malformations
 	fixed := RepairJSON(raw)

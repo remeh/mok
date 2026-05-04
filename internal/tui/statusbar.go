@@ -21,18 +21,18 @@ const (
 
 // StatusBar renders the bottom status bar.
 type StatusBar struct {
-	theme        Theme
-	model        string
-	tokenCount   int
-	maxTokens    int
-	state        StatusBarState
-	toolName     string // Name of the tool being executed
+	theme         Theme
+	model         string
+	tokenCount    int
+	maxTokens     int
+	state         StatusBarState
+	toolName      string // Name of the tool being executed
 	statusMessage string // Custom status message
-	scrollHint   int    // lines below the viewport; rendered as ↓N when > 0
-	width        int
-	dotPhase     int    // 0..2, cycles to produce ".  " ".. " "..."
-	tickCount    int    // raw tick counter; dotPhase advances every dotTickInterval ticks
-	lastUpdate   time.Time
+	scrollHint    int    // lines below the viewport; rendered as ↓N when > 0
+	width         int
+	dotPhase      int // 0..2, cycles to produce ".  " ".. " "..."
+	tickCount     int // raw tick counter; dotPhase advances every dotTickInterval ticks
+	lastUpdate    time.Time
 }
 
 const dotTickInterval = 10 // advance dots every 10 ticks (~1s at 100ms tick rate)

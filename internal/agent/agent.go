@@ -50,9 +50,9 @@ func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry,
 	// Initialize compactor if compaction is configured
 	if cfg.MaxContextTokens > 0 && cfg.CompactionThreshold > 0 {
 		compactionConfig := compaction.CompactionConfig{
-			MaxContextTokens:    cfg.MaxContextTokens,
-			Threshold:           cfg.CompactionThreshold,
-			KeepRecentTokens:    cfg.KeepRecentTokens,
+			MaxContextTokens: cfg.MaxContextTokens,
+			Threshold:        cfg.CompactionThreshold,
+			KeepRecentTokens: cfg.KeepRecentTokens,
 		}
 		summarizationModel := cfg.SummarizationModel
 		if summarizationModel == "" {

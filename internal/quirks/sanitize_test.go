@@ -11,13 +11,13 @@ type mockDebug struct {
 	events []string
 }
 
-func (m *mockDebug) Debug(_ string, _ string, _ ...any)                 {}
-func (m *mockDebug) Info(_ string, _ string, _ ...any)                  {}
-func (m *mockDebug) Request(_ string, _ string, _ ...any)               {}
-func (m *mockDebug) Response(_ string, _ string, _ ...any)              {}
-func (m *mockDebug) Tool(_ string, _ string, _ ...any)                  {}
-func (m *mockDebug) JSON(_ string, _ string, _ any)                     {}
-func (m *mockDebug) Dump(_ string, _ string, _ []byte)                  {}
+func (m *mockDebug) Debug(_ string, _ string, _ ...any)    {}
+func (m *mockDebug) Info(_ string, _ string, _ ...any)     {}
+func (m *mockDebug) Request(_ string, _ string, _ ...any)  {}
+func (m *mockDebug) Response(_ string, _ string, _ ...any) {}
+func (m *mockDebug) Tool(_ string, _ string, _ ...any)     {}
+func (m *mockDebug) JSON(_ string, _ string, _ any)        {}
+func (m *mockDebug) Dump(_ string, _ string, _ []byte)     {}
 func (m *mockDebug) Event(category string, format string, args ...any) {
 	m.events = append(m.events, category+":"+format)
 }

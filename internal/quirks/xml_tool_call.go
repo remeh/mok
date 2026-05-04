@@ -11,9 +11,10 @@ import (
 // (e.g. Qwen) instead of proper JSON tool_calls.
 //
 // The pattern matches:
-//   <function=name>
-//   <parameter=key>value</parameter>
-//   </function>
+//
+//	<function=name>
+//	<parameter=key>value</parameter>
+//	</function>
 var xmlToolCallPattern = regexp.MustCompile(`(?s)<function=([^<]+)>(.*?)</function>`)
 
 // paramPattern matches individual parameters within an XML tool call.

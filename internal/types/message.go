@@ -19,15 +19,15 @@ const (
 
 // Message represents a single conversation entry.
 type Message struct {
-	ID           string
-	Type         MessageType
-	Content      string // Full content (what the LLM sees)
-	Summary      string // One-line display summary for tool results
-	ThinkingText string
-	ToolName     string
-	ToolArgs     string
-	IsError      bool
-	Streaming    bool
+	ID               string
+	Type             MessageType
+	Content          string // Full content (what the LLM sees)
+	Summary          string // One-line display summary for tool results
+	ThinkingText     string
+	ToolName         string
+	ToolArgs         string
+	IsError          bool
+	Streaming        bool
 	Collapsed        bool // When true, show Summary instead of Content
 	ThinkingExpanded bool // When true, show full thinking text
 	Timestamp        time.Time

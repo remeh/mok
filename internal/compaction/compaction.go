@@ -10,10 +10,10 @@ import (
 
 // Compactor orchestrates the compaction process.
 type Compactor struct {
-	client   *llm.Client
-	config   CompactionConfig
+	client     *llm.Client
+	config     CompactionConfig
 	summarizer *Summarizer
-	model    string // Can use a smaller/cheaper model for summarization
+	model      string // Can use a smaller/cheaper model for summarization
 }
 
 // CompactionResult is the result of a compaction operation.

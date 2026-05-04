@@ -171,7 +171,7 @@ func TestStatusBarStates(t *testing.T) {
 		StatusStreaming:  true,
 		StatusCompacting: true,
 		StatusError:      true,
-		StatusProcessing:   true,
+		StatusProcessing: true,
 	}
 
 	for _, state := range states {

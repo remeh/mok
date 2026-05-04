@@ -6,17 +6,17 @@ import (
 
 // CompactionConfig holds the configuration for compaction.
 type CompactionConfig struct {
-	MaxContextTokens    int     // Model context window (e.g., 131072)
-	Threshold           float64 // Compact at this fraction (e.g., 0.8 = 80%)
-	KeepRecentTokens    int     // Always keep this many tokens at the end
+	MaxContextTokens int     // Model context window (e.g., 131072)
+	Threshold        float64 // Compact at this fraction (e.g., 0.8 = 80%)
+	KeepRecentTokens int     // Always keep this many tokens at the end
 }
 
 // DefaultCompactionConfig returns a CompactionConfig with sensible defaults.
 func DefaultCompactionConfig() CompactionConfig {
 	return CompactionConfig{
-		MaxContextTokens:    131072,
-		Threshold:           0.8,
-		KeepRecentTokens:    16384,
+		MaxContextTokens: 131072,
+		Threshold:        0.8,
+		KeepRecentTokens: 16384,
 	}
 }
 

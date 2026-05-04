@@ -76,9 +76,9 @@ func TestMessageTypes(t *testing.T) {
 	}
 
 	expected := map[MessageType]bool{
-		MsgUser:      true,
-		MsgAssistant: true,
-		MsgToolCall:  true,
+		MsgUser:       true,
+		MsgAssistant:  true,
+		MsgToolCall:   true,
 		MsgToolResult: true,
 	}
 

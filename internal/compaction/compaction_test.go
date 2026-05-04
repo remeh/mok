@@ -46,10 +46,10 @@ func TestFindCutPoint(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		targetTokens   int
-		keepRecent     int
-		wantCutIndex   int
+		name         string
+		targetTokens int
+		keepRecent   int
+		wantCutIndex int
 	}{
 		{"no cut needed", 10000, 1000, len(messages)},
 		{"cut some - cut to fit target with keepRecent", 50, 20, 5},
@@ -111,7 +111,7 @@ func TestEstimateMessagesTokens(t *testing.T) {
 func TestExtractFileOps(t *testing.T) {
 	messages := []llm.Message{
 		{
-			Role: "assistant",
+			Role:    "assistant",
 			Content: "I'll read the file for you.",
 			ToolCalls: []llm.APIToolCall{
 				{

@@ -310,7 +310,7 @@ func (v *MessageView) Render() string {
 			AlignHorizontal(lipgloss.Center).
 			Width(v.width).
 			Render("No messages yet. Start coding now!")
-		centerLine := fullHeight / 2 - 1
+		centerLine := fullHeight/2 - 1
 		topPadding := StringsRepeat("\n", max(0, centerLine))
 		bottomPadding := StringsRepeat("\n", max(0, v.height-centerLine-1))
 		return topPadding + centered + bottomPadding
