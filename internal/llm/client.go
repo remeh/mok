@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -41,7 +42,21 @@ func NewClient(baseURL, bearerToken string) *Client {
 		BaseURL:     baseURL,
 		BearerToken: bearerToken,
 		httpClient: &http.Client{
-			Timeout: 1 * time.Hour,
+			// No Timeout: long-running SSE streams are bounded by the
+			// caller's context (e.g. CLI -t flag, user cancel, etc.).
+			// A Client.Timeout would cover the whole request lifecycle
+			// including reading the body, which is the wrong tool here.
+			Transport: &http.Transport{
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
 		},
 		debug: NopLogger{},
 	}
@@ -310,7 +325,7 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 		if scanErr := scanner.Err(); scanErr != nil {
 			c.debug.Response("SSE", "STREAM ABORTED: scanner error: %v (finish_reason=%q)", scanErr, finishReason)
 		} else if finishReason == "" {
-			c.debug.Response("SSE", "STREAM ABORTED: EOF without [DONE] or finish_reason — likely client-side timeout (http.Client.Timeout)")
+			c.debug.Response("SSE", "STREAM WARNING: EOF without [DONE] or finish_reason — server closed connection or proxy dropped the stream")
 		} else {
 			c.debug.Response("SSE", "STREAM WARNING: got finish_reason=%q but no [DONE] marker", finishReason)
 		}
