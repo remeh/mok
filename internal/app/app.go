@@ -271,6 +271,11 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.Screen.SetStatusBarState(tui.StatusProcessing)
 
 	case agent.EventTurnEnd:
+		if ev.Cancelled {
+			cancelMsg := types.NewSystemMessage("Cancelled")
+			m.Messages = append(m.Messages, cancelMsg)
+			m.Screen.GetMessageView().MessageGrew()
+		}
 		m.agentRunning = false
 		m.streamMsg = nil
 		m.cancel = nil

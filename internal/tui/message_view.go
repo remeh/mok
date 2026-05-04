@@ -247,6 +247,8 @@ func (v *MessageView) messageLabelText(msg *types.Message) string {
 	switch msg.Type {
 	case types.MsgUser:
 		return ""
+	case types.MsgSystem:
+		return "[system]"
 	case types.MsgAssistant:
 		return ""
 	case types.MsgToolCall:
@@ -256,8 +258,6 @@ func (v *MessageView) messageLabelText(msg *types.Message) string {
 			return "[" + msg.ToolName + "]"
 		}
 		return "[" + msg.ToolName + "]"
-	case types.MsgSystem:
-		return "system"
 	default:
 		return "unknown"
 	}
@@ -268,6 +268,8 @@ func (v *MessageView) messageStyle(msg *types.Message) lipgloss.Style {
 	switch msg.Type {
 	case types.MsgUser:
 		return v.theme.User
+	case types.MsgSystem:
+		return v.theme.System
 	case types.MsgAssistant:
 		return v.theme.Assistant
 	case types.MsgToolCall:
@@ -280,8 +282,6 @@ func (v *MessageView) messageStyle(msg *types.Message) lipgloss.Style {
 			return v.theme.ToolResultCollapsed
 		}
 		return v.theme.ToolResult
-	case types.MsgSystem:
-		return v.theme.Dim
 	default:
 		return lipgloss.NewStyle()
 	}

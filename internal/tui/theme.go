@@ -5,6 +5,7 @@ import "github.com/charmbracelet/lipgloss"
 // Theme holds all lipgloss styles for the TUI.
 type Theme struct {
 	User              lipgloss.Style
+	System            lipgloss.Style
 	Assistant         lipgloss.Style
 	AssistantLabel    lipgloss.Style
 	ToolCall          lipgloss.Style
@@ -26,6 +27,7 @@ type Theme struct {
 func DefaultTheme() Theme {
 	return Theme{
 		User:              lipgloss.NewStyle().Background(lipgloss.Color("236")),
+		System:            lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("103")),
 		Assistant:         lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
 		AssistantLabel:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),
 		ToolCall:          lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true),

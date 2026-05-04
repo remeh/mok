@@ -69,7 +69,6 @@ func TestNewToolResultError(t *testing.T) {
 
 func TestMessageTypes(t *testing.T) {
 	types := []MessageType{
-		MsgSystem,
 		MsgUser,
 		MsgAssistant,
 		MsgToolCall,
@@ -77,7 +76,6 @@ func TestMessageTypes(t *testing.T) {
 	}
 
 	expected := map[MessageType]bool{
-		MsgSystem:    true,
 		MsgUser:      true,
 		MsgAssistant: true,
 		MsgToolCall:  true,

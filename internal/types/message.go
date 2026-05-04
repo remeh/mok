@@ -10,9 +10,9 @@ import (
 type MessageType string
 
 const (
-	MsgSystem     MessageType = "system"
 	MsgUser       MessageType = "user"
 	MsgAssistant  MessageType = "assistant"
+	MsgSystem     MessageType = "system"
 	MsgToolCall   MessageType = "tool_call"
 	MsgToolResult MessageType = "tool_result"
 )
@@ -38,6 +38,16 @@ func NewMessage(mType MessageType, content string) *Message {
 	return &Message{
 		ID:        fmt.Sprintf("%d-%s", time.Now().UnixNano(), mType),
 		Type:      mType,
+		Content:   content,
+		Timestamp: time.Now(),
+	}
+}
+
+// NewSystemMessage creates a system-level message (e.g. cancellation, compaction).
+func NewSystemMessage(content string) *Message {
+	return &Message{
+		ID:        fmt.Sprintf("%d-system", time.Now().UnixNano()),
+		Type:      MsgSystem,
 		Content:   content,
 		Timestamp: time.Now(),
 	}

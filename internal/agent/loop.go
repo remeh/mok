@@ -18,6 +18,9 @@ const maxToolCallIterations = 5000
 func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- Event) error {
 	debug := a.debug
 
+	// Track where this turn's messages start, so we can undo them on cancellation.
+	turnStart := len(a.messages)
+
 	// Append user message to history
 	a.messages = append(a.messages, llm.Message{
 		Role:    "user",
@@ -402,6 +405,23 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		}
 
 		events <- EventMessageEnd{Usage: turnUsage}
+
+		// Check if the turn was cancelled (context was aborted).
+		// If so, remove this turn's messages from history and signal cancellation.
+		if ctx.Err() == context.Canceled {
+			// Remove messages added during this turn (assistant + any partial messages).
+			// The user message is at turnStart; remove everything from there to the end.
+			// We need to rebuild the tracker since messages were removed.
+			a.messages = a.messages[:turnStart]
+			a.tracker = llm.NewContextTracker()
+			for _, msg := range a.messages {
+				a.tracker.AddMessage(msg)
+			}
+			events <- EventTurnEnd{Usage: turnUsage, Cancelled: true}
+			debug.Event("AGENT", "Turn cancelled, cleaned up %d messages", len(a.messages)-turnStart)
+			return nil
+		}
+
 		events <- EventTurnEnd{Usage: turnUsage}
 		debug.Event("AGENT", "Turn completed successfully")
 		return nil

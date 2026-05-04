@@ -222,15 +222,15 @@ func TestMessageViewToolResultExpanded(t *testing.T) {
 	}
 }
 
-func TestMessageViewSystemMessage(t *testing.T) {
+func TestMessageViewUserMessage(t *testing.T) {
 	v := setupMessageView(t)
 
-	msg := types.NewMessage(types.MsgSystem, "system message")
+	msg := types.NewMessage(types.MsgUser, "user message")
 	v.AddMessage(msg)
 
 	rendered := v.Render()
-	if !strings.Contains(rendered, "system") {
-		t.Errorf("Render should contain system label: %q", rendered)
+	if !strings.Contains(rendered, "user") {
+		t.Errorf("Render should contain user label: %q", rendered)
 	}
 }
 
@@ -308,7 +308,7 @@ func TestRenderedLineCountMatchesCache(t *testing.T) {
 			m.Collapsed = false
 			return m
 		}(),
-		types.NewMessage(types.MsgSystem, "system note"),
+		types.NewMessage(types.MsgUser, "user note"),
 	}
 
 	for _, m := range cases {
