@@ -116,6 +116,18 @@ func (a *Agent) Debug() *DebugLogger {
 	return a.debug
 }
 
+// SetDebug updates the debug logger.
+func (a *Agent) SetDebug(debug *DebugLogger) {
+	a.debug = debug
+}
+
+// SetClientDebug updates the debug logger on the underlying LLM client.
+func (a *Agent) SetClientDebug(debug *DebugLogger) {
+	if a.client != nil {
+		a.client.WithDebug(debug)
+	}
+}
+
 // String returns a string representation of the agent state.
 func (a *Agent) String() string {
 	return fmt.Sprintf("Agent{messages: %d, tokens: %d}", len(a.messages), a.tracker.TotalTokens())

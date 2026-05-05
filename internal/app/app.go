@@ -191,6 +191,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEsc:
 			if m.agentRunning {
 				m.abortAgent()
+			} else if m.modelSelector != nil && m.modelSelector.waitingFor == modelSelectorWaitingInput {
+				// Cancel model selection: clear state, dismiss autocomplete, and clear input
+				m.modelSelector = nil
+				m.Screen.GetInputArea().DismissAutocomplete()
+				m.Screen.GetInputArea().SetValue("")
+				m.Screen.SetStatusMessage("")
 			} else {
 				// Let input area handle ESC (dismiss autocomplete, exit history mode)
 				_ = m.Screen.GetInputArea().HandleKey(msg.Type)
@@ -661,6 +667,12 @@ func (m *AppModel) handleDebugCommand(parts []string) tea.Cmd {
 		}
 	}
 
+	// Update the agent's debug logger immediately
+	if m.Agent != nil {
+		m.Agent.SetDebug(m.Debug)
+		m.Agent.SetClientDebug(m.Debug)
+	}
+
 	// Show confirmation
 	confirmMsg := fmt.Sprintf("Debug mode %s", action)
 	sysMsg := types.NewSystemMessage(confirmMsg)
@@ -707,13 +719,25 @@ func (m *AppModel) handleModelSelection(msg tui.ModelSelectorMsg) tea.Cmd {
 	return nil
 }
 
-// selectModel updates the config with the selected model.
+// selectModel updates the config with the selected model and recreates the agent.
 func (m *AppModel) selectModel(modelID string) {
 	if m.modelSelector == nil {
 		return
 	}
 
+	// Save conversation history before recreating agent
+	conversationHistory := m.Messages
+
+	// Update config with new model
 	m.Config.Model = modelID
+
+	// Recreate the agent with the new model
+	m.recreateAgent()
+
+	// Restore conversation history
+	m.Messages = conversationHistory
+
+	// Update screen with new model
 	m.Screen.SetModel(modelID)
 
 	// Show confirmation
@@ -725,6 +749,31 @@ func (m *AppModel) selectModel(modelID string) {
 	// Clear selector state
 	m.modelSelector = nil
 	m.Screen.SetStatusMessage("")
+}
+
+// recreateAgent creates a new agent with the current config values.
+func (m *AppModel) recreateAgent() {
+	// Create new LLM client
+	client := llm.NewClient(m.Config.Endpoint, m.Config.BearerToken)
+	client.WithDebug(m.Debug)
+
+	// Re-register tools (they need CWD from config)
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Add(&tools.ReadTool{CWD: m.Config.CWD})
+	toolRegistry.Add(&tools.WriteTool{CWD: m.Config.CWD})
+	toolRegistry.Add(&tools.EditTool{CWD: m.Config.CWD})
+	toolRegistry.Add(&tools.BashTool{CWD: m.Config.CWD})
+
+	// Create new agent with updated config
+	m.Agent = agent.NewAgent(client, agent.AgentConfig{
+		Model:               m.Config.Model,
+		MaxTokens:           m.Config.MaxTokens,
+		CWD:                 m.Config.CWD,
+		MaxContextTokens:    m.Config.MaxContextTokens,
+		CompactionThreshold: m.Config.CompactionThreshold,
+		KeepRecentTokens:    m.Config.KeepRecentTokens,
+		SummarizationModel:  m.Config.SummarizationModel,
+	}, toolRegistry, m.Debug)
 }
 
 // submitMessage adds a user message and starts the agent loop.
