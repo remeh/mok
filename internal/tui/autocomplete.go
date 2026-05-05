@@ -118,14 +118,14 @@ func sortStrings(s []string) []string {
 
 // AutocompleteState holds the state for autocomplete functionality.
 type AutocompleteState struct {
-	active          bool
-	suggestions     []string
-	selectedIndex   int
-	prefix          string        // text before cursor to match against
-	insertPos       int           // position where completion will be inserted
-	completionType  CompletionType // Command, Value, or None
-	cmdName         string        // current command name (for value completion)
-	argPrefix       string        // current argument prefix (for value completion)
+	active         bool
+	suggestions    []string
+	selectedIndex  int
+	prefix         string         // text before cursor to match against
+	insertPos      int            // position where completion will be inserted
+	completionType CompletionType // Command, Value, or None
+	cmdName        string         // current command name (for value completion)
+	argPrefix      string         // current argument prefix (for value completion)
 }
 
 // NewAutocompleteState creates a new AutocompleteState.
@@ -261,6 +261,19 @@ func (a *AutocompleteState) HasSuggestions() bool {
 // Count returns the number of suggestions.
 func (a *AutocompleteState) Count() int {
 	return len(a.suggestions)
+}
+
+// ActivateSimpleCompletion activates autocomplete with a simple list of suggestions.
+// This is useful for selection dialogs (e.g., model selection, yes/no prompts).
+func (a *AutocompleteState) ActivateSimpleCompletion(suggestions []string, insertPos int) {
+	a.active = true
+	a.suggestions = suggestions
+	a.selectedIndex = 0
+	a.insertPos = insertPos
+	a.completionType = CompletionCommand
+	a.prefix = ""
+	a.cmdName = ""
+	a.argPrefix = ""
 }
 
 // GetPrefixAtCursor extracts the prefix at the current cursor position from the text.

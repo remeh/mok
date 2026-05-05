@@ -22,6 +22,21 @@ type agentEvent struct {
 	Done  bool // true when the agent turn is complete
 }
 
+// modelSelectorState constants
+type modelSelectorStateEnum int
+
+const (
+	modelSelectorIdle = iota
+	modelSelectorFetching
+	modelSelectorWaitingInput
+)
+
+// modelSelectorState tracks the model selection process.
+type modelSelectorState struct {
+	selector   *tui.ModelSelector
+	waitingFor modelSelectorStateEnum
+}
+
 // AppModel is the root bubbletea model for the application.
 type AppModel struct {
 	Config         *Config
@@ -41,6 +56,9 @@ type AppModel struct {
 	cancel        context.CancelFunc
 	eventChan     chan agentEvent
 	spinnerTicker tea.Cmd
+
+	// Model selection
+	modelSelector *modelSelectorState
 }
 
 // NewAppModel creates a new AppModel with the given config.
@@ -202,6 +220,18 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.abortAgent()
 				break
 			}
+
+			// Check if model selector is active and waiting for selection
+			if m.modelSelector != nil && m.modelSelector.waitingFor == modelSelectorWaitingInput && m.Screen.GetInputArea().AutocompleteIsActive() {
+				// Accept the selected model from input area's autocomplete
+				selectedModel := m.Screen.GetInputArea().GetAutocompleteState().GetSelected()
+				m.selectModel(selectedModel)
+				// Deactivate autocomplete and clear input
+				m.Screen.GetInputArea().DismissAutocomplete()
+				m.Screen.GetInputArea().SetValue("")
+				return m, nil
+			}
+
 			// Accept autocomplete if active (without inserting newline)
 			if m.Screen.GetInputArea().AutocompleteIsActive() {
 				m.Screen.GetInputArea().AcceptAutocomplete()
@@ -292,6 +322,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.Done {
 			return m, m.readAgentEvent
 		}
+
+	case tui.ModelSelectorMsg:
+		m.handleModelSelection(msg)
+		return m, nil
 
 	case time.Time:
 		// Spinner tick
@@ -543,10 +577,16 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 		m.Screen.GetMessageView().Clear()
 		return nil, true
 
+	case "model":
+		return m.handleModelCommand(), true
+
+	case "debug":
+		return m.handleDebugCommand(parts), true
+
 	case "help":
 		// Show help message
 		helpText := "Available commands:\n"
-		helpText += "  /model <name>  - Change model\n"
+		helpText += "  /model         - Interactively select a model from available options\n"
 		helpText += "  /debug on|off  - Toggle debug mode\n"
 		helpText += "  /clear         - Clear conversation\n"
 		helpText += "  /quit | /exit  - Exit application\n"
@@ -565,6 +605,126 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 	}
 
 	return nil, false
+}
+
+// handleModelCommand initiates model selection by fetching available models.
+func (m *AppModel) handleModelCommand() tea.Cmd {
+	// Create model selector if not exists
+	if m.modelSelector == nil {
+		m.modelSelector = &modelSelectorState{
+			selector: tui.NewModelSelector(
+				tui.DefaultTheme(),
+				m.Config.Model,
+				m.Config.Endpoint,
+				m.Config.BearerToken,
+			),
+			waitingFor: modelSelectorFetching, // fetching
+		}
+		m.Screen.SetStatusMessage("Fetching models...")
+	}
+
+	// Start fetching models
+	return m.modelSelector.selector.FetchModelsCmd()
+}
+
+// handleDebugCommand toggles debug mode based on the argument.
+func (m *AppModel) handleDebugCommand(parts []string) tea.Cmd {
+	if len(parts) < 2 {
+		msg := types.NewSystemMessage("Usage: /debug on|off")
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	action := strings.ToLower(parts[1])
+
+	if action != "on" && action != "off" {
+		msg := types.NewSystemMessage("Usage: /debug on|off")
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	// Toggle debug mode
+	m.Config.Debug = (action == "on")
+
+	// Update debug logger if needed
+	if m.Config.Debug {
+		if m.Debug == nil {
+			m.Debug = agent.NewDebugLoggerFile(true, "debug.log")
+			m.Debug.Info("APP", "Debug mode enabled")
+		}
+	} else {
+		if m.Debug != nil {
+			m.Debug.Close()
+			m.Debug = nil
+		}
+	}
+
+	// Show confirmation
+	confirmMsg := fmt.Sprintf("Debug mode %s", action)
+	sysMsg := types.NewSystemMessage(confirmMsg)
+	m.Messages = append(m.Messages, sysMsg)
+	m.Screen.GetMessageView().MessageGrew()
+
+	return nil
+}
+
+// handleModelSelection processes the result of fetching models.
+func (m *AppModel) handleModelSelection(msg tui.ModelSelectorMsg) tea.Cmd {
+	if m.modelSelector == nil {
+		return nil
+	}
+
+	if msg.Error != nil {
+		m.modelSelector.selector.SetError(msg.Error.Error())
+		m.modelSelector.waitingFor = modelSelectorIdle
+		m.Screen.SetStatusMessage("")
+
+		// Show error message
+		errMsg := types.NewSystemMessage("Failed to fetch models: " + msg.Error.Error())
+		m.Messages = append(m.Messages, errMsg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	// Activate selector with fetched models
+	m.modelSelector.selector.Activate(msg.Models)
+	m.modelSelector.waitingFor = modelSelectorWaitingInput // waiting for user selection
+
+	// Show prompt in input area
+	input := m.Screen.GetInputArea()
+	input.SetValue("Select model: ")
+
+	// Programmatically activate autocomplete with model suggestions
+	models := msg.Models
+	suggestions := make([]string, len(models))
+	for i, model := range models {
+		suggestions[i] = model.ID
+	}
+	input.GetAutocompleteState().ActivateSimpleCompletion(suggestions, len("Select model: "))
+
+	return nil
+}
+
+// selectModel updates the config with the selected model.
+func (m *AppModel) selectModel(modelID string) {
+	if m.modelSelector == nil {
+		return
+	}
+
+	m.Config.Model = modelID
+	m.Screen.SetModel(modelID)
+
+	// Show confirmation
+	confirmMsg := fmt.Sprintf("Switched to model: %s", modelID)
+	sysMsg := types.NewSystemMessage(confirmMsg)
+	m.Messages = append(m.Messages, sysMsg)
+	m.Screen.GetMessageView().MessageGrew()
+
+	// Clear selector state
+	m.modelSelector = nil
+	m.Screen.SetStatusMessage("")
 }
 
 // submitMessage adds a user message and starts the agent loop.
