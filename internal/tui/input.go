@@ -697,9 +697,11 @@ func (i *InputArea) Render() string {
 		i.scrollOffset = i.cursorRow
 	}
 
-	cursorChar := "▌"
 	textStyle := i.theme.InputPrefix.Foreground(lipgloss.Color("144"))
-	cursorStyle := textStyle.Copy()
+	// Cursor style inverts foreground/background to make cursor visible
+	cursorStyle := textStyle.Copy().
+		Foreground(lipgloss.Color("16")).  // Black text
+		Background(lipgloss.Color("144"))  // Cyan background (same as text foreground)
 
 	var lines []string
 
@@ -724,17 +726,27 @@ func (i *InputArea) Render() string {
 
 		// Only show cursor on the current cursor row
 		if r == i.cursorRow {
+			// Always use the same cursor style: invert colors on character under cursor
+			// If cursor is at end of line, show an underscore cursor marker
 			if i.cursorCol < len(runes) {
+				// Cursor is on a character: show character with cursor style (overlays, doesn't replace)
 				before = string(runes[:i.cursorCol])
+				// The character at cursorCol will be rendered with cursorStyle to overlay it
 				after = string(runes[i.cursorCol:])
 			} else {
+				// Cursor is at end of line: show underscore cursor marker
 				before = string(runes)
 				after = ""
 			}
 
 			// Truncate if too wide
-			maxBefore := availableWidth - lipgloss.Width(after) - 1
-			if lipgloss.Width(before) > maxBefore && maxBefore > 0 {
+			// Total content (before + cursor + rest) must fit within availableWidth
+			// Cursor always takes 1 slot (either the character under cursor or the cursorBlock)
+			maxBefore := availableWidth - 1
+			if maxBefore < 0 {
+				maxBefore = 0
+			}
+			if lipgloss.Width(before) > maxBefore {
 				// Truncate from the left
 				truncated := before
 				for lipgloss.Width(truncated) > maxBefore {
@@ -743,8 +755,18 @@ func (i *InputArea) Render() string {
 				before = truncated
 			}
 
-			// Render with cursor
-			inputLine := prefix + " " + textStyle.Render(before) + cursorStyle.Render(cursorChar) + textStyle.Render(after)
+			// Render with cursor - apply cursor style to the character under cursor
+			var inputLine string
+			if i.cursorCol < len(runes) {
+				// Cursor on a character: first char of after gets cursor style
+				cursorPart := string([]rune(after)[0])
+				restPart := string([]rune(after)[1:])
+				inputLine = prefix + " " + textStyle.Render(before) + cursorStyle.Render(cursorPart) + textStyle.Render(restPart)
+			} else {
+				// Cursor at end: just render a block
+				cursorBlock := cursorStyle.Render(" ")
+				inputLine = prefix + " " + textStyle.Render(before) + cursorBlock
+			}
 
 			// Pad to width
 			renderedWidth := lipgloss.Width(inputLine)
