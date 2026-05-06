@@ -41,24 +41,81 @@ func NewCompactor(client *llm.Client, config CompactionConfig, model string) *Co
 // Returns the compacted message list and compaction metadata.
 // Uses LLM-driven summarization when possible, falls back to hard cut on error.
 func (c *Compactor) Compact(ctx context.Context, messages []llm.Message) ([]llm.Message, *CompactionResult, error) {
+	return c.doCompact(ctx, messages, c.config.KeepRecentTokens, c.config.KeepRecentTokens, false)
+}
+
+// ForceCompact forces compaction to reduce history to the target token count.
+// This is used for manual compaction regardless of whether the threshold is reached.
+// It respects the configured KeepRecentTokens to preserve recent context.
+func (c *Compactor) ForceCompact(ctx context.Context, messages []llm.Message, targetTokens int) ([]llm.Message, *CompactionResult, error) {
+	// Use the configured keepRecentTokens, with a reasonable minimum
+	keepRecent := c.config.KeepRecentTokens
+	if keepRecent <= 0 {
+		keepRecent = 4096 // Default minimum to preserve some recent context
+	}
+	return c.doCompact(ctx, messages, targetTokens, keepRecent, true)
+}
+
+// doCompact performs the actual compaction logic.
+// targetTokens: the token threshold to cut at
+// keepRecentTokens: minimum tokens to keep at the end (0 for force mode)
+// forceMode: if true, always attempt compaction even if under target
+func (c *Compactor) doCompact(ctx context.Context, messages []llm.Message, targetTokens, keepRecentTokens int, forceMode bool) ([]llm.Message, *CompactionResult, error) {
 	startTime := time.Now()
 
 	// Calculate current tokens
 	currentTokens := EstimateMessagesTokens(messages)
 
 	// Find the cut point
-	cutPoint := FindCutPoint(messages, c.config.MaxContextTokens, c.config.KeepRecentTokens)
+	cutPoint := FindCutPoint(messages, targetTokens, keepRecentTokens)
 
 	if cutPoint.RemoveBeforeIndex >= len(messages) {
-		// No cut needed
-		return messages, &CompactionResult{
-			TokensBefore:    currentTokens,
-			TokensAfter:     currentTokens,
-			MessagesRemoved: 0,
-			Summary:         "",
-			StartTime:       startTime,
-			EndTime:         time.Now(),
-		}, nil
+		// No cut needed according to FindCutPoint
+		if forceMode {
+			// In force mode (manual compaction), we must still compact — cut roughly
+			// in half by targeting the midpoint between system prompt and end.
+			if len(messages) > 2 {
+				cutPoint = CutPoint{
+					RemoveBeforeIndex: len(messages) / 2,
+					TokensToRemove:    currentTokens / 2,
+					TokensRemaining:   currentTokens / 2,
+				}
+			} else {
+				// Not enough messages to compact
+				return messages, &CompactionResult{
+					TokensBefore:    currentTokens,
+					TokensAfter:     currentTokens,
+					MessagesRemoved: 0,
+					Summary:         "",
+					StartTime:       startTime,
+					EndTime:         time.Now(),
+				}, nil
+			}
+		} else {
+			// No cut needed
+			return messages, &CompactionResult{
+				TokensBefore:    currentTokens,
+				TokensAfter:     currentTokens,
+				MessagesRemoved: 0,
+				Summary:         "",
+				StartTime:       startTime,
+				EndTime:         time.Now(),
+			}, nil
+		}
+	} else if forceMode {
+		// In force mode, ensure we actually reduce tokens significantly.
+		// If the cut point doesn't reduce by at least 25%, force a bigger cut.
+		minReduction := currentTokens / 4
+		if currentTokens-cutPoint.TokensRemaining < minReduction {
+			// Cut point doesn't reduce enough, force a bigger cut
+			if len(messages) > 2 {
+				cutPoint = CutPoint{
+					RemoveBeforeIndex: len(messages) / 2,
+					TokensToRemove:    currentTokens / 2,
+					TokensRemaining:   currentTokens / 2,
+				}
+			}
+		}
 	}
 
 	// Messages to summarize (from beginning up to cut point, excluding system prompt)
@@ -168,4 +225,10 @@ func (c *Compactor) ShouldCompact(currentTokens int) bool {
 // Config returns the compaction configuration.
 func (c *Compactor) Config() CompactionConfig {
 	return c.config
+}
+
+// HardCut performs a hard cut without summarization.
+// This is exported for fallback use.
+func (c *Compactor) HardCut(messages []llm.Message, cutPoint CutPoint) ([]llm.Message, error) {
+	return c.hardCut(messages, cutPoint)
 }

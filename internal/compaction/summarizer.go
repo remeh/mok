@@ -24,36 +24,72 @@ func NewSummarizer(client *llm.Client, model string) *Summarizer {
 	}
 }
 
-// Summarize creates a summary of the given messages.
+// Summarize creates a summary of the given messages using a hybrid approach:
+// 1. Programmatically extract file operations and key points
+// 2. Build a structured summary from extracted data
+// 3. Optionally refine with LLM if available
 func (s *Summarizer) Summarize(ctx context.Context, messages []llm.Message) (string, error) {
-	// Convert messages to summary format
-	var summaryMessages []MessageSummary
-	for _, msg := range messages {
-		summaryMessages = append(summaryMessages, MessageSummary{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
+	// Step 1: Programmatically extract file operations
+	fileOps := ExtractFileOps(messages)
+
+	// Step 2: Programmatically extract key points
+	keyPoints := ExtractKeyPoints(messages)
+
+	// Step 3: Build initial structured summary from extracted data
+	initialSummary := BuildSummaryText(
+		keyPoints.Goal,
+		keyPoints.Context,
+		keyPoints.CurrentState,
+		keyPoints.NextSteps,
+		fileOps,
+	)
+
+	// If we have enough context, try to refine with LLM
+	if len(messages) > 2 {
+		refinedSummary, err := s.refineWithLLM(ctx, messages, initialSummary)
+		if err == nil && refinedSummary != "" {
+			return refinedSummary, nil
+		}
+		// Fall back to initial summary if LLM refinement fails
 	}
 
-	// Build the summarization prompt
-	prompt := BuildSummarizationPrompt(summaryMessages)
+	return initialSummary, nil
+}
 
-	// Send to LLM
+// refineWithLLM attempts to refine the initial summary using the LLM.
+// It provides the initial summary as context and asks the LLM to enhance it.
+func (s *Summarizer) refineWithLLM(ctx context.Context, messages []llm.Message, initialSummary string) (string, error) {
+	// Create a refined prompt that includes the initial summary
+	refinementPrompt := fmt.Sprintf(`You are a context summarization assistant. I have an initial summary of a conversation
+that I need you to refine and improve for clarity and completeness.
+
+Initial Summary:
+%s
+
+Please improve this summary by:
+1. Making it more concise while preserving all important information
+2. Ensuring the goal, context, and next steps are clearly articulated
+3. Verifying that file operations are accurately listed
+4. Improving readability and structure
+
+Output ONLY the improved summary in the same format (with ## sections). Do NOT add any extra text.
+
+Improved Summary:`, initialSummary)
+
 	summaryMsg := llm.Message{
 		Role:    "user",
-		Content: prompt,
+		Content: refinementPrompt,
 	}
 
 	req := &llm.ChatRequest{
 		Model:     s.model,
 		Messages:  []llm.Message{summaryMsg},
-		MaxTokens: 2048, // Reasonable size for a summary
+		MaxTokens: 2048,
 	}
 
-	// Stream the response and collect it
 	eventChan, err := s.client.Stream(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("failed to create summary stream: %w", err)
+		return "", err
 	}
 
 	var summaryText strings.Builder
@@ -61,17 +97,23 @@ func (s *Summarizer) Summarize(ctx context.Context, messages []llm.Message) (str
 		if event.Type == "text" {
 			summaryText.WriteString(event.Text)
 		} else if event.Type == "error" {
-			return "", fmt.Errorf("summary stream error: %w", event.Err)
+			return "", event.Err
 		}
 	}
 
 	result := strings.TrimSpace(summaryText.String())
 	if result == "" {
-		return "", fmt.Errorf("empty summary returned")
+		return "", fmt.Errorf("empty refinement returned")
 	}
 
 	// Extract content from <summary> tags if present
 	result = extractSummaryContent(result)
+
+	// Validate that the refined summary has the required sections
+	if !strings.Contains(result, "## Goal") || !strings.Contains(result, "## Current State") {
+		// If refinement is missing key sections, return the initial summary
+		return "", fmt.Errorf("refined summary missing required sections")
+	}
 
 	return result, nil
 }

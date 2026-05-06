@@ -177,7 +177,7 @@ func (c *Client) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEve
 	c.debug.Response("HTTP", "Response: %s", resp.Status)
 
 	events := make(chan StreamEvent, 64)
-	go c.parseStream(resp.Body, events)
+	go c.parseStream(ctx, resp.Body, events)
 	return events, nil
 }
 
@@ -197,7 +197,7 @@ func (c *Client) buildRequestBody(req *ChatRequest) map[string]any {
 	return body
 }
 
-func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
+func (c *Client) parseStream(ctx context.Context, body io.ReadCloser, events chan<- StreamEvent) {
 	defer body.Close()
 	defer close(events)
 
@@ -209,6 +209,21 @@ func (c *Client) parseStream(body io.ReadCloser, events chan<- StreamEvent) {
 	receivedDone := false
 	emittedDone := false
 	c.debug.Response("SSE", "Stream parsing started")
+
+	// Monitor for context cancellation in a separate goroutine
+	// to ensure we can abort the scan if needed
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Close the body to unblock the scanner
+			body.Close()
+		case <-done:
+			// Stream completed normally, nothing to do
+			return
+		}
+	}()
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

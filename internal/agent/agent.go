@@ -132,3 +132,100 @@ func (a *Agent) SetClientDebug(debug *DebugLogger) {
 func (a *Agent) String() string {
 	return fmt.Sprintf("Agent{messages: %d, tokens: %d}", len(a.messages), a.tracker.TotalTokens())
 }
+
+// Compact performs compaction on the agent's message history.
+// Returns the compaction result or an error.
+func (a *Agent) Compact(ctx context.Context) (*compaction.CompactionResult, error) {
+	if a.compactor == nil {
+		return nil, fmt.Errorf("compaction is not configured")
+	}
+
+	a.debug.Info("AGENT", "Compaction triggered")
+
+	// Build full context for compaction
+	allMessages := a.buildMessageList()
+	currentTokens := a.tracker.TotalTokens()
+	a.debug.Info("CONTEXT", "Compacting: %d tokens", currentTokens)
+
+	compacted, result, err := a.compactor.Compact(ctx, allMessages)
+	if err != nil {
+		a.debug.Event("CONTEXT", "Compaction failed: %v", err)
+		return nil, err
+	}
+
+	// Update agent's message history with compacted version
+	a.messages = compacted[1:] // Skip system prompt (index 0)
+
+	// Reset tracker and re-add messages
+	a.tracker = llm.NewContextTracker()
+	for _, msg := range compacted {
+		a.tracker.AddMessage(msg)
+	}
+
+	a.debug.Info("CONTEXT", "Compaction complete: %d → %d tokens, removed %d messages",
+		result.TokensBefore, result.TokensAfter, result.MessagesRemoved)
+
+	return result, nil
+}
+
+// ManualCompact forces compaction regardless of threshold.
+// It reduces history by at least 50% (or to keepRecentTokens if that's higher)
+// and summarizes older messages into a compact summary.
+func (a *Agent) ManualCompact(ctx context.Context) (*compaction.CompactionResult, error) {
+	if a.compactor == nil {
+		return nil, fmt.Errorf("compaction is not configured")
+	}
+
+	a.debug.Info("AGENT", "Manual compaction triggered")
+
+	// Build full context for compaction
+	allMessages := a.buildMessageList()
+	currentTokens := a.tracker.TotalTokens()
+
+	// In force mode, always target at least 50% reduction
+	targetTokens := currentTokens / 2
+	if targetTokens < 1000 {
+		targetTokens = 1000
+	}
+
+	// But don't go below keepRecentTokens unless we have to
+	keepRecent := a.compactor.Config().KeepRecentTokens
+	if currentTokens > keepRecent && targetTokens < keepRecent {
+		targetTokens = keepRecent
+	}
+
+	a.debug.Info("CONTEXT", "Force compacting: %d tokens → target %d (keepRecent=%d)",
+		currentTokens, targetTokens, keepRecent)
+
+	// Force compaction
+	compacted, result, err := a.compactor.ForceCompact(ctx, allMessages, targetTokens)
+	if err != nil {
+		a.debug.Event("CONTEXT", "Force compaction failed: %v, using hard cut", err)
+		// Fallback: hard cut to targetTokens
+		cutPoint := compaction.FindCutPoint(allMessages, targetTokens, keepRecent)
+		compacted, err = a.compactor.HardCut(allMessages, cutPoint)
+		if err != nil {
+			return nil, err
+		}
+		result = &compaction.CompactionResult{
+			TokensBefore:    currentTokens,
+			TokensAfter:     compaction.EstimateMessagesTokens(compacted),
+			MessagesRemoved: len(allMessages) - len(compacted),
+			Summary:         "[hard cut]",
+		}
+	}
+
+	// Update agent's message history with compacted version
+	a.messages = compacted[1:] // Skip system prompt (index 0)
+
+	// Reset tracker and re-add messages
+	a.tracker = llm.NewContextTracker()
+	for _, msg := range compacted {
+		a.tracker.AddMessage(msg)
+	}
+
+	a.debug.Info("CONTEXT", "Force compaction complete: %d → %d tokens, removed %d messages",
+		result.TokensBefore, result.TokensAfter, result.MessagesRemoved)
+
+	return result, nil
+}

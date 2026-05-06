@@ -58,29 +58,27 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 				currentTokens, a.compactor.Config().Threshold*100, a.compactor.Config().MaxContextTokens)
 			events <- EventCompactionStart{TokensBefore: currentTokens}
 
-			// Build full context for compaction
-			allMessages := a.buildMessageList()
-			compacted, result, err := a.compactor.Compact(ctx, allMessages)
+			result, err := a.Compact(ctx)
 			if err != nil {
+				// Check if it was cancelled
+				if ctx.Err() == context.Canceled {
+					debug.Event("CONTEXT", "Compaction cancelled by user")
+					events <- EventCompactionError{Err: fmt.Errorf("compaction cancelled")}
+					// Emit turn end to signal the TUI that the turn is complete
+					events <- EventTurnEnd{Usage: turnUsage, Cancelled: true}
+					debug.Event("AGENT", "Turn cancelled (compaction), cleaned up")
+					return nil
+				}
 				events <- EventCompactionError{Err: err}
 				debug.Event("CONTEXT", "Compaction failed: %v, using hard cut", err)
 				// Fallback: continue without compaction, the LLM will handle it
 			} else {
-				// Update agent's message history with compacted version
-				a.messages = compacted[1:] // Skip system prompt (index 0)
-				// Reset tracker and re-add messages
-				a.tracker = llm.NewContextTracker()
-				for _, msg := range compacted {
-					a.tracker.AddMessage(msg)
-				}
 				events <- EventCompactionEnd{
 					TokensBefore:     result.TokensBefore,
 					TokensAfter:      result.TokensAfter,
 					MessagesRemoved:  result.MessagesRemoved,
 					SummaryAvailable: result.CompactSummary != nil,
 				}
-				debug.Event("CONTEXT", "Compaction complete: %d -> %d tokens, removed %d messages",
-					result.TokensBefore, result.TokensAfter, result.MessagesRemoved)
 			}
 		}
 

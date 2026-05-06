@@ -121,6 +121,11 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		Description: "Show available commands",
 		HasArgs:     false,
 	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "compact",
+		Description: "Manually compact conversation history",
+		HasArgs:     false,
+	})
 
 	// Pass command registry to input area
 	inputArea := screen.GetInputArea()
@@ -451,11 +456,15 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 
 	case agent.EventCompactionStart:
 		m.Screen.SetStatusBarState(tui.StatusCompacting)
-		m.Screen.SetStatusMessage("Compacting context...")
+		m.Screen.SetStatusMessage("")
+		m.Screen.SetBlocked(true)
 
 	case agent.EventCompactionEnd:
-		m.Screen.SetStatusBarState(tui.StatusProcessing)
-		m.Screen.SetStatusMessage("Compaction complete")
+		m.Screen.SetBlocked(false)
+		m.Screen.SetStatusBarState(tui.StatusIdle)
+		m.Screen.SetStatusMessage("")
+		// Update token count to reflect the compacted context
+		m.Screen.SetTokenCount(ev.TokensAfter)
 		// Optionally show a system message about compaction
 		summaryMsg := types.NewMessage(types.MsgAssistant,
 			fmt.Sprintf("[Compaction: %d → %d tokens, %d messages summarized]",
@@ -464,8 +473,16 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		m.Screen.GetMessageView().MessageGrew()
 
 	case agent.EventCompactionError:
-		m.Screen.SetStatusBarState(tui.StatusProcessing)
-		m.Screen.SetStatusMessage("Compaction skipped")
+		m.Screen.SetBlocked(false)
+		m.Screen.SetStatusBarState(tui.StatusIdle)
+		m.Screen.SetStatusMessage("")
+		// Check if it was a cancellation
+		if ev.Err != nil && strings.Contains(ev.Err.Error(), "cancelled") {
+			// Show cancellation message but don't treat as error
+			cancelMsg := types.NewSystemMessage("Compaction cancelled")
+			m.Messages = append(m.Messages, cancelMsg)
+			m.Screen.GetMessageView().MessageGrew()
+		}
 	}
 }
 
@@ -595,6 +612,7 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 		helpText += "  /model         - Interactively select a model from available options\n"
 		helpText += "  /debug on|off  - Toggle debug mode\n"
 		helpText += "  /clear         - Clear conversation\n"
+		helpText += "  /compact       - Manually compact conversation history\n"
 		helpText += "  /quit | /exit  - Exit application\n"
 		helpText += "  /help          - Show this help\n"
 
@@ -602,6 +620,9 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 		m.Messages = append(m.Messages, helpMsg)
 		m.Screen.GetMessageView().MessageGrew()
 		return nil, true
+
+	case "compact":
+		return m.handleCompactCommand(), true
 
 	default:
 		msg := types.NewSystemMessage("unknown command: " + text)
@@ -680,6 +701,45 @@ func (m *AppModel) handleDebugCommand(parts []string) tea.Cmd {
 	m.Screen.GetMessageView().MessageGrew()
 
 	return nil
+}
+
+// handleCompactCommand triggers manual compaction of the conversation history.
+func (m *AppModel) handleCompactCommand() tea.Cmd {
+	if m.Agent == nil {
+		msg := types.NewSystemMessage("Agent not initialized")
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	// Show status and block input
+	m.Screen.SetStatusBarState(tui.StatusCompacting)
+	m.Screen.SetStatusMessage("")
+	m.Screen.SetBlocked(true)
+
+	// Perform compaction in a goroutine to avoid blocking the UI
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		result, err := m.Agent.ManualCompact(ctx)
+		if err != nil {
+			return agentEvent{
+				Event: agent.EventError{Err: fmt.Errorf("compaction failed: %w", err)},
+				Done:  true,
+			}
+		}
+
+		return agentEvent{
+			Event: agent.EventCompactionEnd{
+				TokensBefore:     result.TokensBefore,
+				TokensAfter:      result.TokensAfter,
+				MessagesRemoved:  result.MessagesRemoved,
+				SummaryAvailable: result.CompactSummary != nil,
+			},
+			Done: true,
+		}
+	}
 }
 
 // handleModelSelection processes the result of fetching models.
