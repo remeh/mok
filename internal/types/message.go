@@ -31,6 +31,7 @@ type Message struct {
 	Collapsed        bool // When true, show Summary instead of Content
 	ThinkingExpanded bool // When true, show full thinking text
 	Timestamp        time.Time
+	IsTurnStats      bool // When true, this is a turn stats line (dim, no pin)
 }
 
 // NewMessage creates a new Message with a unique ID.

@@ -416,8 +416,12 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 		}
 	}
 
-	// User messages: top padding line (empty line with background).
+	// User messages: top padding line with dim timestamp.
 	if msg.Type == types.MsgUser {
+		if !msg.Timestamp.IsZero() {
+			ts := " " + msg.Timestamp.Format("15:04:05")
+			lines = append(lines, v.theme.Dim.Render(ts))
+		}
 		paddedStyle := style.Width(v.width - 2)
 		lines = append(lines, paddedStyle.Render(strings.Repeat(" ", v.width-2)))
 	}

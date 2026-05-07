@@ -1,6 +1,10 @@
 package agent
 
-import "github.com/user/mmok/internal/llm"
+import (
+	"time"
+
+	"github.com/user/mmok/internal/llm"
+)
 
 // Event is emitted by the agent loop.
 type Event interface {
@@ -8,7 +12,9 @@ type Event interface {
 }
 
 // EventTurnStart is emitted when a new turn begins.
-type EventTurnStart struct{}
+type EventTurnStart struct {
+	StartTime time.Time // When the prompt was submitted
+}
 
 func (EventTurnStart) eventType() string { return "turn_start" }
 
@@ -44,6 +50,8 @@ func (EventMessageEnd) eventType() string { return "message_end" }
 type EventTurnEnd struct {
 	Usage     *llm.Usage // Accumulated usage for the full turn
 	Cancelled bool       // true when the user cancelled the turn
+	Duration  time.Duration
+	EndTime   time.Time // When the turn finished
 }
 
 func (EventTurnEnd) eventType() string { return "turn_end" }

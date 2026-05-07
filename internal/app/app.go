@@ -357,6 +357,10 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 	switch ev := event.(type) {
 	case agent.EventTurnStart:
 		m.Screen.SetStatusBarState(tui.StatusProcessing)
+		// Store the turn start time on the last user message
+		if len(m.Messages) > 0 {
+			m.Messages[len(m.Messages)-1].Timestamp = ev.StartTime
+		}
 
 	case agent.EventMessageStart:
 		m.streamMsg = types.NewMessage(types.MsgAssistant, "")
@@ -401,6 +405,15 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 
 		if ev.Usage != nil {
 			m.Screen.SetTokenCount(ev.Usage.TotalTokens)
+		}
+
+		// Append a dim stats line at the end of the turn
+		if ev.Duration > 0 {
+			statsLine := formatTurnStats(ev.EndTime, ev.Duration, ev.Usage)
+			statsMsg := types.NewMessage(types.MsgSystem, statsLine)
+			statsMsg.IsTurnStats = true
+			m.Messages = append(m.Messages, statsMsg)
+			m.Screen.GetMessageView().MessageGrew()
 		}
 
 		m.Screen.SetStatusBarState(tui.StatusIdle)
@@ -891,6 +904,20 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 	}()
 
 	return m.readAgentEvent
+}
+
+// formatTurnStats formats a turn's end time, duration, and token usage into a short stats line.
+func formatTurnStats(endTime time.Time, duration time.Duration, usage *llm.Usage) string {
+	parts := []string{fmt.Sprintf("%s", endTime.Format("15:04:05"))}
+	dur := duration.Round(time.Millisecond)
+	if dur > time.Minute {
+		dur = dur.Round(time.Second)
+	}
+	parts = append(parts, fmt.Sprintf("⏱ %s", dur))
+	if usage != nil && usage.TotalTokens > 0 {
+		parts = append(parts, fmt.Sprintf("%d tokens", usage.TotalTokens))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // Run starts the bubbletea program.

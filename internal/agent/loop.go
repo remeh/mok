@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/user/mmok/internal/llm"
 	"github.com/user/mmok/internal/quirks"
@@ -21,6 +22,9 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 	// Track where this turn's messages start, so we can undo them on cancellation.
 	turnStart := len(a.messages)
 
+	// Record when the prompt was submitted
+	turnStartTime := time.Now()
+
 	// Append user message to history
 	a.messages = append(a.messages, llm.Message{
 		Role:    "user",
@@ -28,7 +32,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 	})
 	a.tracker.AddMessage(a.messages[len(a.messages)-1])
 
-	events <- EventTurnStart{}
+	events <- EventTurnStart{StartTime: turnStartTime}
 	debug.Event("AGENT", "Turn started")
 	debug.Event("AGENT", "User message: %q", userMessage)
 
@@ -44,7 +48,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		if iteration >= maxToolCallIterations {
 			err := fmt.Errorf("max tool call iterations (%d) reached", maxToolCallIterations)
 			events <- EventError{Err: err}
-			events <- EventTurnEnd{Usage: turnUsage}
+			events <- EventTurnEnd{Usage: turnUsage, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 			debug.Event("AGENT", "Turn ended (max iterations)")
 			return err
 		}
@@ -65,7 +69,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 					debug.Event("CONTEXT", "Compaction cancelled by user")
 					events <- EventCompactionError{Err: fmt.Errorf("compaction cancelled")}
 					// Emit turn end to signal the TUI that the turn is complete
-					events <- EventTurnEnd{Usage: turnUsage, Cancelled: true}
+					events <- EventTurnEnd{Usage: turnUsage, Cancelled: true, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 					debug.Event("AGENT", "Turn cancelled (compaction), cleaned up")
 					return nil
 				}
@@ -96,7 +100,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 		eventChan, err := a.client.Stream(ctx, req)
 		if err != nil {
 			events <- EventError{Err: err}
-			events <- EventTurnEnd{Usage: turnUsage}
+			events <- EventTurnEnd{Usage: turnUsage, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 			debug.Response("AGENT", "Stream failed: %v", err)
 			return err
 		}
@@ -190,7 +194,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 
 			case "error":
 				events <- EventError{Err: event.Err}
-				events <- EventTurnEnd{Usage: turnUsage}
+				events <- EventTurnEnd{Usage: turnUsage, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 				debug.Event("EVENT", "error: %v", event.Err)
 				return event.Err
 			}
@@ -210,7 +214,7 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 			}
 			err := fmt.Errorf("model returned empty response after %d retries", quirks.MaxEmptyRetries)
 			events <- EventError{Err: err}
-			events <- EventTurnEnd{Usage: turnUsage}
+			events <- EventTurnEnd{Usage: turnUsage, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 			debug.Event("AGENT", "Turn ended (empty response after retries)")
 			return err
 		}
@@ -415,12 +419,12 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 			for _, msg := range a.messages {
 				a.tracker.AddMessage(msg)
 			}
-			events <- EventTurnEnd{Usage: turnUsage, Cancelled: true}
+			events <- EventTurnEnd{Usage: turnUsage, Cancelled: true, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 			debug.Event("AGENT", "Turn cancelled, cleaned up %d messages", len(a.messages)-turnStart)
 			return nil
 		}
 
-		events <- EventTurnEnd{Usage: turnUsage}
+		events <- EventTurnEnd{Usage: turnUsage, Duration: time.Since(turnStartTime), EndTime: time.Now()}
 		debug.Event("AGENT", "Turn completed successfully")
 		return nil
 	}
