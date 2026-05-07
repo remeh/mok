@@ -420,10 +420,18 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 	if msg.Type == types.MsgUser {
 		if !msg.Timestamp.IsZero() {
 			ts := " " + msg.Timestamp.Format("15:04:05")
-			lines = append(lines, v.theme.Dim.Render(ts))
+			lines = append(lines, v.theme.Dim.Render(" " + ts))
 		}
 		paddedStyle := style.Width(v.width - 2)
 		lines = append(lines, paddedStyle.Render(strings.Repeat(" ", v.width-2)))
+	}
+
+	// System messages: show timestamp above the message.
+	if msg.Type == types.MsgSystem && !msg.IsTurnStats {
+		if !msg.Timestamp.IsZero() {
+			ts := " " + msg.Timestamp.Format("15:04:05")
+			lines = append(lines, v.theme.Dim.Render(" " + ts))
+		}
 	}
 
 	// Use plain label text for wrapping, then apply style uniformly.
@@ -448,14 +456,15 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 		} else {
 			contentStyler = v.theme.Dim
 		}
+		paddedStyle := style.Width(v.width - 2)
 
 		for i, line := range contentLines {
 			if i == 0 && strings.HasPrefix(line, tag) {
 				rest := line[len(tag):]
 				styledLine := tagStyler.Render(tag) + contentStyler.Render(rest)
-				lines = append(lines, styledLine)
+				lines = append(lines, paddedStyle.Render(styledLine))
 			} else {
-				lines = append(lines, contentStyler.Render(line))
+				lines = append(lines, paddedStyle.Render(contentStyler.Render(line)))
 			}
 		}
 	} else {

@@ -33,11 +33,11 @@ type Theme struct {
 // DefaultTheme returns the default color scheme.
 func DefaultTheme() Theme {
 	return Theme{
-		User:                lipgloss.NewStyle().Background(lipgloss.Color("236")),
-		System:              lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("103")),
+		User:                lipgloss.NewStyle().Background(lipgloss.Color("236")).PaddingLeft(1),
+		System:              lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("103")).PaddingLeft(2),
 		Assistant:           lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
 		AssistantLabel:      lipgloss.NewStyle().Foreground(lipgloss.Color("9")),
-		ToolCall:            lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true),
+		ToolCall:            lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true).PaddingLeft(1),
 		ToolResult:          lipgloss.NewStyle().Foreground(lipgloss.Color("81")),
 		ToolResultCollapsed: lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Italic(true),
 		Error:               lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true),
