@@ -1,6 +1,5 @@
 model: "gemma4-e4b"
-# model: "qwen3.5-9b-coder"
-endpoint: "http://nuc:8000/v1"
+endpoint: "http://localhost:8080/v1"
 api_key: ""
 max_context_tokens: 131072
 compaction_threshold: 0.8

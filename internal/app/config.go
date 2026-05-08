@@ -10,13 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ConfigFileNames tried in order.
-var configPaths = []string{
-	".", // project-local mok.yaml
-}
-
 // configEnvPrefix for environment variables.
-const configEnvPrefix = "MMOK_"
+const configEnvPrefix = "MOK_"
 
 // LoadConfig reads config with precedence: defaults → file → env → flags.
 func LoadConfig(flags map[string]string) (*Config, error) {
