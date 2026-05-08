@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
-	"github.com/user/mmok/internal/agent"
-	"github.com/user/mmok/internal/llm"
-	"github.com/user/mmok/internal/tools"
-	"github.com/user/mmok/internal/tui"
-	"github.com/user/mmok/internal/types"
+	"github.com/user/mok/internal/agent"
+	"github.com/user/mok/internal/llm"
+	"github.com/user/mok/internal/tools"
+	"github.com/user/mok/internal/tui"
+	"github.com/user/mok/internal/types"
 )
 
 // agentEvent wraps a single agent event as a tea.Msg.
@@ -528,7 +528,7 @@ func (m *AppModel) openEditor() tea.Cmd {
 		editor = "vi"
 	}
 
-	tmp, err := os.CreateTemp("", "mmok-prompt-*.txt")
+	tmp, err := os.CreateTemp("", "mok-prompt-*.txt")
 	if err != nil {
 		return nil
 	}

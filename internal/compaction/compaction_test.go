@@ -3,7 +3,7 @@ package compaction
 import (
 	"testing"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 func TestShouldCompact(t *testing.T) {

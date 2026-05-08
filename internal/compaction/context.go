@@ -1,7 +1,7 @@
 package compaction
 
 import (
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // CompactionConfig holds the configuration for compaction.

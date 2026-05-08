@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // SanitizedToolCalls holds the outcome of sanitizing tool call arguments.

@@ -1,7 +1,7 @@
 package quirks
 
 import (
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // UseThinkingAsContent returns the content unchanged if it is non-empty.

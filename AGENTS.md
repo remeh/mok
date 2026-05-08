@@ -1,4 +1,4 @@
-# mmok — Terminal Coding Agent
+# mok — Terminal Coding Agent
 
 ## What It Is
 
@@ -8,7 +8,7 @@ Supports both interactive TUI mode and non-interactive prompt mode (single-shot,
 ## Build
 
 ```
-go build -o mmok cmd/mmok/main.go
+go build -o mok cmd/mok/main.go
 ```
 
 ## Test
@@ -19,14 +19,14 @@ go test -v ./...
 
 After building, test with:
 ```
-./mmok -t 120 -p "here is a prompt" -endpoint http://localhost:8000/v1 -model gemma4-e4b
+./mok -t 120 -p "here is a prompt" -endpoint http://localhost:8000/v1 -model gemma4-e4b
 ```
 `-p` is the prompt, `-t` is timeout in seconds. Models `gemma4-e4b` and `qwen3.5-9b-thinking` are available.
 
 ## Architecture
 
 ```
-cmd/mmok/main.go            — CLI entry point, flags, prompt mode runner
+cmd/mok/main.go            — CLI entry point, flags, prompt mode runner
 internal/agent/
   agent.go                  — Agent struct, conversation history, context tracker
   events.go                 — Agent event types (TurnStart, TextDelta, ThinkingDelta, ToolCall*, ToolResult)
@@ -88,7 +88,7 @@ Precedence: defaults → YAML file → env vars → CLI flags.
 
 **CLI flags**: `-model`, `-endpoint`, `-bearer-token`, `-max-context-tokens`, `-max-tokens`, `-debug`, `-p` (prompt), `-t` (timeout), `-version`.
 
-**File locations**: `./mmok.yaml`, `./config.yaml`, `~/.config/mmok/config.yaml`.
+**File locations**: `./mok.yaml`, `./config.yaml`, `~/.config/mok/config.yaml`.
 
 ## Current State
 

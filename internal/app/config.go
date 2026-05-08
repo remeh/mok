@@ -12,7 +12,7 @@ import (
 
 // ConfigFileNames tried in order.
 var configPaths = []string{
-	".", // project-local mmok.yaml
+	".", // project-local mok.yaml
 }
 
 // configEnvPrefix for environment variables.
@@ -46,9 +46,9 @@ func loadFromFile() (*Config, error) {
 	}
 
 	paths := []string{
-		"./mmok.yaml",
+		"./mok.yaml",
 		"./config.yaml",
-		filepath.Join(home, ".config", "mmok", "config.yaml"),
+		filepath.Join(home, ".config", "mok", "config.yaml"),
 	}
 
 	for _, path := range paths {

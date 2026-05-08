@@ -3,7 +3,7 @@ package quirks
 import (
 	"testing"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // mockDebug implements llm.DebugLogger for testing.

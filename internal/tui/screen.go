@@ -3,7 +3,7 @@ package tui
 import (
 	"strings"
 
-	"github.com/user/mmok/internal/types"
+	"github.com/user/mok/internal/types"
 )
 
 // Screen composes all TUI components into the main layout.

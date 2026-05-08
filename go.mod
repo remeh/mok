@@ -1,4 +1,4 @@
-module github.com/user/mmok
+module github.com/user/mok
 
 go 1.25.8
 

@@ -3,7 +3,7 @@ package agent
 import (
 	"time"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // Event is emitted by the agent loop.

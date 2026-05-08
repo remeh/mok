@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
-	"github.com/user/mmok/internal/types"
+	"github.com/user/mok/internal/types"
 )
 
 // messageLineRange maps a message index to its line range in the rendered output.

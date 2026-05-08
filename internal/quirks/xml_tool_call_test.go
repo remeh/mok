@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 func TestExtractXMLToolCalls_Empty(t *testing.T) {
@@ -30,7 +30,7 @@ func TestExtractXMLToolCalls_NoToolCalls(t *testing.T) {
 func TestExtractXMLToolCalls_BashToolCall(t *testing.T) {
 	input := "\u2573" +
 		"<function=bash>" +
-		"<parameter=command>cd /Users/remy/docs/code/mmok && go build -o mmok cmd/mmok/main.go 2>&1; echo \"EXIT: $?\"</parameter>" +
+		"<parameter=command>cd /Users/remy/docs/code/mok && go build -o mok cmd/mok/main.go 2>&1; echo \"EXIT: $?\"</parameter>" +
 		"</function>" +
 		"\u2581"
 
@@ -44,7 +44,7 @@ func TestExtractXMLToolCalls_BashToolCall(t *testing.T) {
 	if result[0].Name != "bash" {
 		t.Errorf("expected name 'bash', got %q", result[0].Name)
 	}
-	if result[0].Args["command"] != "cd /Users/remy/docs/code/mmok && go build -o mmok cmd/mmok/main.go 2>&1; echo \"EXIT: $?\"" {
+	if result[0].Args["command"] != "cd /Users/remy/docs/code/mok && go build -o mok cmd/mok/main.go 2>&1; echo \"EXIT: $?\"" {
 		t.Errorf("unexpected command: %q", result[0].Args["command"])
 	}
 }
@@ -54,7 +54,7 @@ func TestExtractXMLToolCalls_ReadToolCall(t *testing.T) {
 		"<function=read>" +
 		"<parameter=limit>50</parameter>" +
 		"<parameter=offset>1</parameter>" +
-		"<parameter=path>/Users/remy/docs/code/mmok/internal/app/app.go</parameter>" +
+		"<parameter=path>/Users/remy/docs/code/mok/internal/app/app.go</parameter>" +
 		"</function>" +
 		"\u2581"
 
@@ -68,7 +68,7 @@ func TestExtractXMLToolCalls_ReadToolCall(t *testing.T) {
 	if result[0].Name != "read" {
 		t.Errorf("expected name 'read', got %q", result[0].Name)
 	}
-	if result[0].Args["path"] != "/Users/remy/docs/code/mmok/internal/app/app.go" {
+	if result[0].Args["path"] != "/Users/remy/docs/code/mok/internal/app/app.go" {
 		t.Errorf("unexpected path: %q", result[0].Args["path"])
 	}
 	if result[0].Args["offset"] != "1" {
@@ -140,7 +140,7 @@ func TestExtractXMLToolCalls_MultilineParams(t *testing.T) {
 		"1\n" +
 		"</parameter>\n" +
 		"<parameter=path>\n" +
-		"/Users/remy/docs/code/mmok/internal/app/app.go\n" +
+		"/Users/remy/docs/code/mok/internal/app/app.go\n" +
 		"</parameter>\n" +
 		"</function>\n" +
 		"</tool_call>"
@@ -155,7 +155,7 @@ func TestExtractXMLToolCalls_MultilineParams(t *testing.T) {
 	if result[0].Name != "read" {
 		t.Errorf("expected name 'read', got %q", result[0].Name)
 	}
-	if result[0].Args["path"] != "/Users/remy/docs/code/mmok/internal/app/app.go" {
+	if result[0].Args["path"] != "/Users/remy/docs/code/mok/internal/app/app.go" {
 		t.Errorf("unexpected path: %q", result[0].Args["path"])
 	}
 	if result[0].Args["offset"] != "1" {

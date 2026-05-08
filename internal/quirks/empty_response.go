@@ -1,7 +1,7 @@
 package quirks
 
 import (
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // MaxEmptyRetries is the maximum number of times to retry when the model

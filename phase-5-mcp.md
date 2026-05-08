@@ -16,7 +16,7 @@ Key MCP concepts:
 - **Resources**: Addressable data sources (files, API data, etc.)
 - **Prompts**: Pre-built prompt templates
 
-For mmok, we focus on **tools** first, then resources.
+For mok, we focus on **tools** first, then resources.
 
 ## MCP JSON-RPC Client
 
@@ -101,7 +101,7 @@ func startServer(command string, args []string, env []string) (*os.Process, io.W
 
 Messages are sent as newline-delimited JSON:
 ```
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"mmok","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"mok","version":"0.1.0"}}}
 ```
 
 ## Tool Bridge

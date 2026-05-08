@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a `-debug` flag to `mmok` that enables verbose logging of all internal agent operations, including:
+Add a `-debug` flag to `mok` that enables verbose logging of all internal agent operations, including:
 - All LLM requests/responses (full message payloads)
 - Agent loop state transitions
 - Tool call execution details
@@ -220,12 +220,12 @@ debug.Tool("READ", "Read %d lines, truncated=%v", linesRead, wasTruncated)
 **Goal**: Add `-debug` flag and wire it through the system.
 
 **Files to modify**:
-- `cmd/mmok/main.go`
+- `cmd/mok/main.go`
 - `internal/app/app.go`
 - `internal/app/config_types.go`
 
 **Tasks**:
-1. Add `-debug` flag to `cmd/mmok/main.go`
+1. Add `-debug` flag to `cmd/mok/main.go`
 2. Add `Debug` field to `Config` struct in `config_types.go`
 3. Pass debug flag through config loading
 4. Initialize debug logger when `-debug` is set
@@ -235,13 +235,13 @@ debug.Tool("READ", "Read %d lines, truncated=%v", linesRead, wasTruncated)
 **CLI usage**:
 ```bash
 # Interactive TUI mode with debug logging
-./mmok -debug
+./mok -debug
 
 # Prompt mode with debug logging
-./mmok -debug -p "your prompt here" -t 120
+./mok -debug -p "your prompt here" -t 120
 
 # Debug with other flags
-./mmok -debug -model gemma4-e4b -endpoint http://localhost:8000/v1 -p "test"
+./mok -debug -model gemma4-e4b -endpoint http://localhost:8000/v1 -p "test"
 ```
 
 ### Phase 6: Debug Output Formatting (Optional Enhancement)
@@ -270,19 +270,19 @@ debug.Tool("READ", "Read %d lines, truncated=%v", linesRead, wasTruncated)
 ### Manual Testing
 ```bash
 # Test basic debug output
-./mmok -debug -p "Hello" -t 30
+./mok -debug -p "Hello" -t 30
 
 # Test tool calling with debug
-./mmok -debug -p "Read the file README.md" -t 60
+./mok -debug -p "Read the file README.md" -t 60
 
 # Test multi-turn with tools
-./mmok -debug -p "Write a file, then read it back" -t 60
+./mok -debug -p "Write a file, then read it back" -t 60
 ```
 
 ## Expected Debug Output Example
 
 ```
-$ ./mmok -debug -p "Read the file AGENTS.md" -t 60
+$ ./mok -debug -p "Read the file AGENTS.md" -t 60
 
 [DEBUG] [2026-04-30 14:23:45] [CONFIG] Debug mode enabled
 [DEBUG] [2026-04-30 14:23:45] [AGENT] Creating agent with model=qwen3.5-9b-thinking
@@ -342,7 +342,7 @@ $ ./mmok -debug -p "Read the file AGENTS.md" -t 60
 [DEBUG] [2026-04-30 14:23:47] [TOOL] Looking up tool: read
 [DEBUG] [2026-04-30 14:23:47] [TOOL] Executing read with args: {"path": "AGENTS.md"}
 [DEBUG] [2026-04-30 14:23:47] [READ] Resolving path: AGENTS.md
-[DEBUG] [2026-04-30 14:23:47] [READ] Resolved path: /Users/remy/docs/code/mmok/AGENTS.md
+[DEBUG] [2026-04-30 14:23:47] [READ] Resolved path: /Users/remy/docs/code/mok/AGENTS.md
 [DEBUG] [2026-04-30 14:23:47] [READ] Reading file (offset=0, limit=0)
 [DEBUG] [2026-04-30 14:23:47] [READ] Read 156 lines (7.2KB), truncated=false
 [DEBUG] [2026-04-30 14:23:47] [TOOL] read completed: err=<nil>, output_len=7342
@@ -358,7 +358,7 @@ $ ./mmok -debug -p "Read the file AGENTS.md" -t 60
 ... (second iteration)
 
 [DEBUG] [2026-04-30 14:23:49] [EVENT] text_delta: "Here's the content of AGENTS.md:"
-[DEBUG] [2026-04-30 14:23:50] [EVENT] text_delta: "\n\n# mmok — Terminal Coding Agent..."
+[DEBUG] [2026-04-30 14:23:50] [EVENT] text_delta: "\n\n# mok — Terminal Coding Agent..."
 [DEBUG] [2026-04-30 14:23:50] [EVENT] message_end: usage={PromptTokens=7878 CompletionTokens=234}
 [DEBUG] [2026-04-30 14:23:50] [AGENT] Turn completed successfully
 

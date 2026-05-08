@@ -3,7 +3,7 @@ package quirks
 import (
 	"strings"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // reasoningTags lists known reasoning/thinking XML tag markers across model

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // FileOperations tracks file operations from the conversation.

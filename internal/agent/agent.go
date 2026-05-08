@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/user/mmok/internal/compaction"
-	"github.com/user/mmok/internal/llm"
-	"github.com/user/mmok/internal/tools"
+	"github.com/user/mok/internal/compaction"
+	"github.com/user/mok/internal/llm"
+	"github.com/user/mok/internal/tools"
 )
 
 // AgentConfig holds the configuration values the agent needs.

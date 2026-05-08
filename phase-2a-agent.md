@@ -329,7 +329,7 @@ llm.Message{Role:"assistant", ToolCalls:[...]}  →  types.Message + nested tool
 8. [x] Implement `internal/agent/agent.go`: Agent facade with `Abort()`
 9. [x] Wire agent into TUI app: `AppModel` holds `*agent.Agent`, events drive UI updates
 10. [x] Render thinking blocks collapsed in TUI message view
-11. [x] Test: Send a message, see real streaming response (not echo) — `./mmok -p "Say hello" -model gemma4-e4b` → 74 chars in 609ms
+11. [x] Test: Send a message, see real streaming response (not echo) — `./mok -p "Say hello" -model gemma4-e4b` → 74 chars in 609ms
 12. [x] Test: Thinking tokens filtered, don't appear in output — `qwen3.5-9b-thinking` → clean output, no `</think>` leakage
 13. [x] Test: Abort kills in-flight request — `-t 6` on long prompt → partial output (823 chars) then clean cutoff
 14. [x] Test: Token tracking — local estimate shown when API omits usage (llama-server quirk: no streaming usage)

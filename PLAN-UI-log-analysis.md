@@ -106,7 +106,7 @@ func (m *AppModel) exportToLogFile(filename string) error {
     defer f.Close()
     
     // Write header
-    fmt.Fprintf(f, "=== mmok TUI Session Log ===\n")
+    fmt.Fprintf(f, "=== mok TUI Session Log ===\n")
     fmt.Fprintf(f, "Model: %s\n", m.Config.Model)\n")
     fmt.Fprintf(f, "Started: %s\n\n", time.Now().Format(time.RFC3339))
     
@@ -197,7 +197,7 @@ if cfg.Debug {
     if err != nil {
         return nil, fmt.Errorf("failed to create ui.log: %w", err)
     }
-    fmt.Fprintln(logFile, "=== mmok TUI Session Log ===")
+    fmt.Fprintln(logFile, "=== mok TUI Session Log ===")
     fmt.Fprintf(logFile, "Started: %s\n\n", time.Now().Format(time.RFC3339))
 }
 ```
@@ -408,7 +408,7 @@ You'd need to parse the output to extract just messages, which is fragile.
 | File | Change |
 |------|--------|
 | `internal/app/app.go` | Add export command, export function, log file handling |
-| `cmd/mmok/main.go` | Add CLI flag for log file path (optional) |
+| `cmd/mok/main.go` | Add CLI flag for log file path (optional) |
 | `internal/types/message.go` | Consider adding `LogTimestamp` field (optional) |
 
 ---
@@ -469,7 +469,7 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
     if err != nil {
         return nil, fmt.Errorf("failed to create ui.log: %w", err)
     }
-    fmt.Fprintln(logFile, "=== mmok TUI Session Log ===")
+    fmt.Fprintln(logFile, "=== mok TUI Session Log ===")
     fmt.Fprintf(logFile, "Model: %s\n", cfg.Model)
     fmt.Fprintf(logFile, "Started: %s\n\n", time.Now().Format(time.RFC3339))
     

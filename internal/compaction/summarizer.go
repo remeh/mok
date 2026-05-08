@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // Summarizer handles LLM-driven summarization of conversation history.

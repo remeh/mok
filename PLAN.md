@@ -1,4 +1,4 @@
-# mmok — Go Coding Harness
+# mok — Go Coding Harness
 
 A terminal-based coding agent harness in Go for local LLMs via llama-server (OpenAI-compatible endpoints).
 
@@ -24,8 +24,8 @@ A terminal-based coding agent harness in Go for local LLMs via llama-server (Ope
 ## Project Structure
 
 ```
-mmok/
-├── cmd/mmok/main.go
+mok/
+├── cmd/mok/main.go
 ├── internal/
 │   ├── app/          # TUI app, config loading
 │   ├── agent/        # Agent loop, events, messages, prompt builder

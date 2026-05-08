@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/user/mmok/internal/tools"
+	"github.com/user/mok/internal/tools"
 )
 
 // PromptConfig holds parameters for building the system prompt.

@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/user/mmok/internal/agent"
-	"github.com/user/mmok/internal/app"
-	"github.com/user/mmok/internal/llm"
-	"github.com/user/mmok/internal/tools"
+	"github.com/user/mok/internal/agent"
+	"github.com/user/mok/internal/app"
+	"github.com/user/mok/internal/llm"
+	"github.com/user/mok/internal/tools"
 )
 
 var (
@@ -37,7 +37,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("mmok %s (commit: %s, built: %s)\n", version, commit, date)
+		fmt.Printf("mok %s (commit: %s, built: %s)\n", version, commit, date)
 		os.Exit(0)
 	}
 
@@ -113,7 +113,7 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 	var charCount int
 	var lastUsage *llm.Usage
 
-	fmt.Fprintf(os.Stderr, "\n[mmok] model=%s endpoint=%s timeout=%ds\n", cfg.Model, cfg.Endpoint, timeoutSec)
+	fmt.Fprintf(os.Stderr, "\n[mok] model=%s endpoint=%s timeout=%ds\n", cfg.Model, cfg.Endpoint, timeoutSec)
 	fmt.Fprintln(os.Stderr, strings.Repeat("-", 60))
 
 	events := make(chan agent.Event, 128)
@@ -159,7 +159,7 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 		case agent.EventCompactionError:
 			fmt.Fprintf(os.Stderr, "[compaction] error: %v\n", e.Err)
 		case agent.EventError:
-			fmt.Fprintf(os.Stderr, "\n[mmok] error: %v\n", e.Err)
+			fmt.Fprintf(os.Stderr, "\n[mok] error: %v\n", e.Err)
 		}
 	}
 
@@ -169,11 +169,11 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprint(os.Stderr, strings.Repeat("-", 60)+"\n")
 	if lastUsage != nil {
-		fmt.Fprintf(os.Stderr, "[mmok] done in %s | tokens: prompt=%d completion=%d total=%d\n",
+		fmt.Fprintf(os.Stderr, "[mok] done in %s | tokens: prompt=%d completion=%d total=%d\n",
 			elapsed.Round(time.Millisecond), lastUsage.PromptTokens, lastUsage.CompletionTokens, lastUsage.TotalTokens)
 	} else {
 		estimatedTokens := llm.EstimateTokens(prompt) + llm.EstimateTokens(strings.Repeat(" ", charCount))
-		fmt.Fprintf(os.Stderr, "[mmok] done in %s (%d chars, ~%d tokens estimated)\n",
+		fmt.Fprintf(os.Stderr, "[mok] done in %s (%d chars, ~%d tokens estimated)\n",
 			elapsed.Round(time.Millisecond), charCount, estimatedTokens)
 	}
 

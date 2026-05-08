@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/user/mmok/internal/llm"
-	"github.com/user/mmok/internal/quirks"
-	"github.com/user/mmok/internal/tools"
+	"github.com/user/mok/internal/llm"
+	"github.com/user/mok/internal/quirks"
+	"github.com/user/mok/internal/tools"
 )
 
 const maxToolCallIterations = 5000

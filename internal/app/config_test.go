@@ -39,7 +39,7 @@ compaction_threshold: 0.9
 keep_recent_tokens: 8192
 max_tokens: 4096
 `
-	yamlPath := filepath.Join(tmpDir, "mmok.yaml")
+	yamlPath := filepath.Join(tmpDir, "mok.yaml")
 	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestLoadConfigFlagsOverride(t *testing.T) {
 func TestLoadConfigPrecedence(t *testing.T) {
 	// Write a file with model="file-model"
 	tmpDir := t.TempDir()
-	yamlPath := filepath.Join(tmpDir, "mmok.yaml")
+	yamlPath := filepath.Join(tmpDir, "mok.yaml")
 	os.WriteFile(yamlPath, []byte("model: \"file-model\"\nendpoint: \"http://file:1111/v1\"\n"), 0644)
 
 	// Set env with model="env-model"

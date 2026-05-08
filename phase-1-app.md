@@ -10,7 +10,7 @@
 ## Config Schema
 
 ```yaml
-# ~/.config/mmok/config.yaml or ./mmok.yaml (project-local)
+# ~/.config/mok/config.yaml or ./mok.yaml (project-local)
 model: "qwen3-8b"
 endpoint: "http://localhost:8080/v1"
 api_key: ""
@@ -147,7 +147,7 @@ var (
 
 ### Tasks
 
-1. [ ] `go mod init github.com/user/mmok`
+1. [ ] `go mod init github.com/user/mok`
 2. [ ] Create directory structure under `internal/`
 3. [ ] Implement `internal/app/config.go`: LoadConfig with YAML + env + defaults
 4. [ ] Implement `internal/app/config_types.go`: Config struct
@@ -157,5 +157,5 @@ var (
 8. [ ] Implement `internal/tui/message_view.go`: Message list with rendering
 9. [ ] Implement `internal/tui/screen.go`: Main layout composition
 10. [ ] Implement `internal/app/app.go`: Bubbletea app model, update, view
-11. [ ] Implement `cmd/mmok/main.go`: CLI entry point with flag parsing
+11. [ ] Implement `cmd/mok/main.go`: CLI entry point with flag parsing
 12. [ ] Test: Run the app, type messages, see them rendered (no LLM yet)

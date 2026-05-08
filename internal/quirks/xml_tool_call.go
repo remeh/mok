@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/user/mmok/internal/llm"
+	"github.com/user/mok/internal/llm"
 )
 
 // xmlToolCallPattern matches XML-style tool calls emitted by some models

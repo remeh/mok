@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/user/mmok/internal/types"
+	"github.com/user/mok/internal/types"
 )
 
 func setupMessageView(t *testing.T) *MessageView {

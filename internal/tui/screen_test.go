@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/user/mmok/internal/types"
+	"github.com/user/mok/internal/types"
 )
 
 func setupScreen(t *testing.T) *Screen {

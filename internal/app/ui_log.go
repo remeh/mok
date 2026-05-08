@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/user/mmok/internal/agent"
-	"github.com/user/mmok/internal/types"
+	"github.com/user/mok/internal/agent"
+	"github.com/user/mok/internal/types"
 )
 
 // UILogWriter manages real-time and post-session logging of TUI activity.
@@ -81,7 +81,7 @@ func NewUILogWriter(path, model, endpoint string, opts ...UILogWriterOption) (*U
 // WriteHeader writes the session header to the log.
 func (w *UILogWriter) WriteHeader() {
 	fmt.Fprintln(w.file, strings.Repeat("=", 60))
-	fmt.Fprintln(w.file, "mmok TUI Session Log")
+	fmt.Fprintln(w.file, "mok TUI Session Log")
 	fmt.Fprintln(w.file, strings.Repeat("=", 60))
 	fmt.Fprintf(w.file, "Model:    %s\n", w.model)
 	fmt.Fprintf(w.file, "Endpoint: %s\n", w.endpoint)
@@ -324,7 +324,7 @@ func ExportToFile(path string, messages []*types.Message, model, endpoint string
 	fprintln := func(s string) { fmt.Fprintln(f, s) }
 
 	fmt.Fprintln(f, strings.Repeat("=", 60))
-	fmt.Fprintln(f, "mmok Conversation Export")
+	fmt.Fprintln(f, "mok Conversation Export")
 	fmt.Fprintln(f, strings.Repeat("=", 60))
 	fmt.Fprintf(f, "Model:    %s\n", model)
 	fmt.Fprintf(f, "Endpoint: %s\n", endpoint)

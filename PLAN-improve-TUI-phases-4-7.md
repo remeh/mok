@@ -190,7 +190,7 @@ A pure-tui test for `MessageView` is already covered by Phase 2 invariants; noth
 
 - All four `Update()` switch arms above are rewritten as specified.
 - The four new tests pass.
-- Manual: `mmok`, type a long prompt, press `PgUp` → scrolls. Press `End` (with input non-empty) → cursor jumps to end of input, does NOT scroll. Press `Up` (input non-empty) → history. Type more, press `Shift+Up` → scrolls without losing input.
+- Manual: `mok`, type a long prompt, press `PgUp` → scrolls. Press `End` (with input non-empty) → cursor jumps to end of input, does NOT scroll. Press `Up` (input non-empty) → history. Type more, press `Shift+Up` → scrolls without losing input.
 
 ---
 
