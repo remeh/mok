@@ -384,6 +384,18 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 	case agent.EventMessageEnd:
 		if m.streamMsg != nil {
 			m.streamMsg.Streaming = false
+			// If the assistant message was only a placeholder (no content and
+			// no thinking), the response was purely tool calls. Remove the
+			// empty message to avoid a duplicate entry in the UI.
+			if m.streamMsg.Content == "" && m.streamMsg.ThinkingText == "" {
+				for i, msg := range m.Messages {
+					if msg == m.streamMsg {
+						m.Messages = append(m.Messages[:i], m.Messages[i+1:]...)
+						m.Screen.GetMessageView().MessageGrew()
+						break
+					}
+				}
+			}
 		}
 		if ev.Usage != nil {
 			m.Screen.SetTokenCount(ev.Usage.TotalTokens)
