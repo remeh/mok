@@ -228,7 +228,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if m.agentRunning {
-				m.abortAgent()
+				m.Screen.GetMessageView().ScrollToBottom()
 				break
 			}
 
