@@ -311,7 +311,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			// Click within the message view area to toggle expand/collapse
-			if msg.Y < m.height-2 {
+			if msg.Y < m.Screen.GetContentHeight() {
 				idx := m.Screen.GetMessageView().MessageAtY(msg.Y)
 				if idx >= 0 && idx < len(m.Messages) {
 					msgAtClick := m.Messages[idx]

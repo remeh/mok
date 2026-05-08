@@ -185,3 +185,8 @@ func (s *Screen) GetInputArea() *InputArea {
 func (s *Screen) GetMessageView() *MessageView {
 	return s.msgView
 }
+
+// GetContentHeight returns the height of the message view content area.
+func (s *Screen) GetContentHeight() int {
+	return s.msgView.height
+}
