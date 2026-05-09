@@ -388,7 +388,7 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 	var content string
 	switch msg.Type {
 	case types.MsgToolCall:
-		content = truncate(msg.ToolArgs, 80)
+		content = truncate(msg.ToolArgs, v.width-5)
 	case types.MsgToolResult:
 		if msg.Collapsed && msg.Summary != "" {
 			// Show collapsed summary with expand hint.
