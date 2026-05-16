@@ -55,7 +55,6 @@ type AppModel struct {
 	streamMsg     *types.Message
 	cancel        context.CancelFunc
 	eventChan     chan agentEvent
-	spinnerTicker tea.Cmd
 
 	// Model selection
 	modelSelector *modelSelectorState

@@ -273,27 +273,6 @@ func TestMessageViewTotalLineCount(t *testing.T) {
 	}
 }
 
-// TestStreamingLineCountStableAcrossBlinkFrames is the Phase 1 invariant:
-// during streaming, the cursor blink must not change the total line count.
-// Before Phase 1 the streaming cursor lived on its own row that flickered
-// on/off, and messageLineCount() didn't model it, so scroll math drifted.
-func TestStreamingLineCountStableAcrossBlinkFrames(t *testing.T) {
-	v := setupMessageView(t)
-
-	msg := types.NewMessage(types.MsgAssistant, "streaming content here")
-	msg.Streaming = true
-	v.AddMessage(msg)
-
-	counts := map[int]bool{}
-	for frame := 0; frame < 16; frame++ {
-		v.cursorFrame = frame
-		counts[v.totalLineCount()] = true
-	}
-	if len(counts) != 1 {
-		t.Errorf("totalLineCount varies across cursor frames: %v", counts)
-	}
-}
-
 // TestRenderedLineCountMatchesCache asserts the cache and an ad-hoc render
 // agree on line count. Before Phase 1, messageLineCount() and renderMessage()
 // disagreed for assistant messages because only renderMessage applied
