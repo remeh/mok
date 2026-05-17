@@ -100,7 +100,7 @@ Precedence: defaults → YAML file → env vars → CLI flags.
 - `summarization_model` — Optional separate model for summarization (defaults to main model)
 - `max_tokens` — Maximum response tokens
 - `debug` — Enable debug logging
-- `ui_log_path` — Path for UI session logs (default: ui.log)
+- `ui_log_path` — Path for UI session logs (requires debug mode to be enabled)
 - `enable_multiline` — Enable multi-line editing (default: true)
 - `enable_autocomplete` — Enable command autocomplete (default: true)
 - `autocomplete_max_items` — Max suggestions to show (default: 10)
@@ -206,7 +206,7 @@ Precedence: defaults → YAML file → env vars → CLI flags.
 - Toggle via `/debug on|off` command or `-debug` flag
 
 **UI session logging**:
-- Persistent conversation logs (`ui.log` by default)
+- Persistent conversation logs when debug mode is enabled
 - Includes model, endpoint, full message history
 - Configurable via `MOK_UI_LOG_PATH` or `-ui-log-path`
 

@@ -32,7 +32,7 @@ func main() {
 	maxContext := flag.Int("max-context-tokens", 0, "Max context tokens")
 	maxTokens := flag.Int("max-tokens", 0, "Max response tokens")
 	debug := flag.Bool("debug", false, "Enable debug logging to stderr")
-	uiLogPath := flag.String("ui-log-path", "", "Path for UI session log (default: ui.log)")
+	uiLogPath := flag.String("ui-log-path", "", "Path for UI session log (requires -debug flag)")
 
 	flag.Parse()
 

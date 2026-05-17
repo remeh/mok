@@ -140,14 +140,16 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		SummarizationModel:  cfg.SummarizationModel,
 	}, toolRegistry, debug)
 
-	// Create UI log writer (always on, default path is "ui.log").
+	// Create UI log writer (only when debug is enabled).
 	var uiLogWriter *UILogWriter
 	var err error
-	uiLogWriter, err = NewUILogWriter(cfg.UILogPath, cfg.Model, cfg.Endpoint)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: ui log: %v\n", err)
-	} else if debug != nil {
-		debug.Info("APP", "UI logging enabled, writing to %s", cfg.UILogPath)
+	if cfg.Debug && cfg.UILogPath != "" {
+		uiLogWriter, err = NewUILogWriter(cfg.UILogPath, cfg.Model, cfg.Endpoint)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: ui log: %v\n", err)
+		} else {
+			debug.Info("APP", "UI logging enabled, writing to %s", cfg.UILogPath)
+		}
 	}
 
 	return &AppModel{

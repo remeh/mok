@@ -34,7 +34,7 @@ func DefaultConfig() *Config {
 		CompactionThreshold: 0.8,
 		KeepRecentTokens:    16384,
 		MaxTokens:           0,
-		UILogPath:           "ui.log",
+		UILogPath:           "",
 
 		// Input behavior defaults
 		EnableMultiLine:      true,
