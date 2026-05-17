@@ -11,6 +11,10 @@ type Theme struct {
 	ToolCall            lipgloss.Style
 	ToolResult          lipgloss.Style
 	ToolResultCollapsed lipgloss.Style
+	DiffAdd             lipgloss.Style
+	DiffDel             lipgloss.Style
+	DiffHeader          lipgloss.Style
+	DiffContext         lipgloss.Style
 	Error               lipgloss.Style
 	StatusBar           lipgloss.Style
 	StatusBarActive     lipgloss.Style
@@ -40,6 +44,10 @@ func DefaultTheme() Theme {
 		ToolCall:            lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true).PaddingLeft(1),
 		ToolResult:          lipgloss.NewStyle().Foreground(lipgloss.Color("81")),
 		ToolResultCollapsed: lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Italic(true),
+		DiffAdd:             lipgloss.NewStyle().Foreground(lipgloss.Color("34")),
+		DiffDel:             lipgloss.NewStyle().Foreground(lipgloss.Color("160")),
+		DiffHeader:          lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true),
+		DiffContext:         lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
 		Error:               lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true),
 		StatusBar:           lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("144")),
 		StatusBarActive:     lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("226")).Bold(true),

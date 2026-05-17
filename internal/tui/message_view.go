@@ -295,6 +295,23 @@ func (v *MessageView) messageStyle(msg *types.Message) lipgloss.Style {
 	}
 }
 
+// diffLineStyle picks a color style for a unified-diff line based on its
+// prefix. Falls back to the provided default style for unrecognized lines.
+func (v *MessageView) diffLineStyle(line string, fallback lipgloss.Style) lipgloss.Style {
+	trimmed := strings.TrimLeft(line, " ")
+	switch {
+	case strings.HasPrefix(trimmed, "+++"), strings.HasPrefix(trimmed, "---"), strings.HasPrefix(trimmed, "@@"):
+		return v.theme.DiffHeader
+	case strings.HasPrefix(trimmed, "+"):
+		return v.theme.DiffAdd
+	case strings.HasPrefix(trimmed, "-"):
+		return v.theme.DiffDel
+	case strings.HasPrefix(line, " "):
+		return v.theme.DiffContext
+	}
+	return fallback
+}
+
 // tagStyle returns the style for the tool name tag (e.g. [read]).
 func (v *MessageView) tagStyle(msg *types.Message) lipgloss.Style {
 	switch msg.Type {
@@ -459,13 +476,24 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 		}
 		paddedStyle := style.Width(v.width - 2)
 
+		// Colorize unified diffs for edit tool results (non-error, expanded).
+		colorizeDiff := msg.Type == types.MsgToolResult && msg.ToolName == "edit" && !msg.IsError
+
 		for i, line := range contentLines {
+			styler := contentStyler
+			if colorizeDiff && (i > 0 || !strings.HasPrefix(line, tag)) {
+				body := line
+				if i == 0 && strings.HasPrefix(line, tag) {
+					body = line[len(tag):]
+				}
+				styler = v.diffLineStyle(body, contentStyler)
+			}
 			if i == 0 && strings.HasPrefix(line, tag) {
 				rest := line[len(tag):]
-				styledLine := tagStyler.Render(tag) + contentStyler.Render(rest)
+				styledLine := tagStyler.Render(tag) + styler.Render(rest)
 				lines = append(lines, paddedStyle.Render(styledLine))
 			} else {
-				lines = append(lines, paddedStyle.Render(contentStyler.Render(line)))
+				lines = append(lines, paddedStyle.Render(styler.Render(line)))
 			}
 		}
 	} else {

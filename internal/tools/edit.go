@@ -9,15 +9,6 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
-// diffColor codes for terminal output
-const (
-	diffHeaderColor   = "\033[1;36m" // Bright cyan for @@ headers
-	diffOldColor      = "\033[31m"   // Red for deleted lines
-	diffNewColor      = "\033[32m"   // Green for added lines
-	diffContextColor  = "\033[90m"   // Dim gray for context lines
-	diffResetColor    = "\033[0m"    // Reset
-)
-
 // EditArgs represents the edit tool arguments.
 type EditArgs struct {
 	Path    string `json:"path"`
@@ -276,7 +267,7 @@ func generateCompactDiff(oldContent, newContent, path string) string {
 		// Build hunk header with merged context range
 		oldRange := formatRange(h.ctxOldStart, h.ctxOldEnd)
 		newRange := formatRange(h.ctxNewStart, h.ctxNewEnd)
-		buf.WriteString(fmt.Sprintf("%s@@ -%s +%s @@%s\n", diffHeaderColor, oldRange, newRange, diffResetColor))
+		buf.WriteString(fmt.Sprintf("@@ -%s +%s @@\n", oldRange, newRange))
 
 		// Track what we've output to avoid duplicates
 		outputOldLine := h.ctxOldStart
@@ -285,32 +276,32 @@ func generateCompactDiff(oldContent, newContent, path string) string {
 		for _, r := range h.regions {
 			// Output context lines before this region's changes
 			for j := outputOldLine; j < r.oldStart && j <= len(oldLines); j++ {
-				buf.WriteString(fmt.Sprintf("%s %s%s\n", diffContextColor, oldLines[j-1], diffResetColor))
+				buf.WriteString(fmt.Sprintf(" %s\n", oldLines[j-1]))
 				outputOldLine++
 				outputNewLine++
 			}
 
 			// Output deleted lines
 			for j := r.oldStart; j <= r.oldEnd && j <= len(oldLines); j++ {
-				buf.WriteString(fmt.Sprintf("%s-%s%s\n", diffOldColor, oldLines[j-1], diffResetColor))
+				buf.WriteString(fmt.Sprintf("-%s\n", oldLines[j-1]))
 				outputOldLine++
 			}
 
 			// Output added lines
 			for j := r.newStart; j <= r.newEnd && j <= len(newLines); j++ {
-				buf.WriteString(fmt.Sprintf("%s+%s%s\n", diffNewColor, newLines[j-1], diffResetColor))
+				buf.WriteString(fmt.Sprintf("+%s\n", newLines[j-1]))
 				outputNewLine++
 			}
 		}
 
 		// Output remaining context lines after the last change
 		for j := outputOldLine; j <= h.ctxOldEnd && j <= len(oldLines); j++ {
-			buf.WriteString(fmt.Sprintf("%s %s%s\n", diffContextColor, oldLines[j-1], diffResetColor))
+			buf.WriteString(fmt.Sprintf(" %s\n", oldLines[j-1]))
 		}
 	}
 
 	// Add file headers
-	header := fmt.Sprintf("%s--- a/%s%s\n%s+++ b/%s%s\n", diffHeaderColor, path, diffResetColor, diffHeaderColor, path, diffResetColor)
+	header := fmt.Sprintf("--- a/%s\n+++ b/%s\n", path, path)
 	return header + buf.String()
 }
 
