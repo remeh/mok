@@ -95,7 +95,7 @@ func (s *StatusBar) SetWidth(width int) {
 	s.width = width
 }
 
-// Tick advances the dot animation and message view cursor frame.
+// Tick advances the dot animation.
 func (s *StatusBar) Tick() {
 	s.tickCount++
 	if s.tickCount%dotTickInterval == 0 {

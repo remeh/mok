@@ -46,7 +46,6 @@ type MessageView struct {
 	height        int
 	visible       int // number of visible lines
 	pinned        bool
-	cursorFrame   int                // frame counter for blinking cursor
 	lineRanges    []messageLineRange // built during Render
 	mdRenderer    *markdownRenderer  // lazily initialized markdown renderer
 	reservedLines int                // lines reserved below the message view (input + status bar)
@@ -216,8 +215,8 @@ func (v *MessageView) computeFingerprint(msg *types.Message) string {
 
 // ensureRendered makes sure v.rendered is in sync with v.messages at v.width.
 // Streaming messages are always re-rendered (their content is mutating in
-// place each tick and the cursor blinks), but other messages are only
-// re-rendered when their fingerprint changes.
+// place each tick), but other messages are only re-rendered when their
+// fingerprint changes.
 //
 // No-op if the view has no usable width yet (the constructor leaves it 0;
 // SetDimensions sets it before the first Render).
@@ -457,12 +456,6 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 	text := labelText + " " + content
 	wrapped := wordwrap.String(text, v.width-2)
 	contentLines := strings.Split(wrapped, "\n")
-
-	// Inline streaming cursor: appended to the last content line so the
-	// total line count stays constant across blink frames.
-	if msg.Streaming && v.cursorFrame%8 < 4 && len(contentLines) > 0 {
-		contentLines[len(contentLines)-1] += "▌"
-	}
 
 	// For tool messages, style only the tag, not the full line.
 	if msg.Type == types.MsgToolCall || msg.Type == types.MsgToolResult {

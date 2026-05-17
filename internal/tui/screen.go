@@ -127,10 +127,9 @@ func (s *Screen) SetStatusMessage(msg string) {
 	s.statusBar.SetStatusMessage(msg)
 }
 
-// Tick advances the status bar spinner animation and message view cursor frame.
+// Tick advances the status bar spinner animation.
 func (s *Screen) Tick() {
 	s.statusBar.Tick()
-	s.msgView.cursorFrame++
 }
 
 // SetStreaming sets whether the LLM is streaming.
