@@ -117,6 +117,9 @@ func loadFromEnv(cfg *Config) error {
 	if v, ok := envMap["BEARER_TOKEN"]; ok && v != "" {
 		cfg.BearerToken = v
 	}
+	if v, ok := envMap["SYSTEM_PROMPT"]; ok && v != "" {
+		cfg.SystemPrompt = v
+	}
 	if v, ok := envMap["DEBUG"]; ok && v == "true" {
 		cfg.Debug = true
 	}
@@ -149,6 +152,12 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	if v, ok := flags["endpoint"]; ok && v != "" {
 		cfg.Endpoint = v
 	}
+	if v, ok := flags["bearer-token"]; ok && v != "" {
+		cfg.BearerToken = v
+	}
+	if v, ok := flags["system-prompt"]; ok && v != "" {
+		cfg.SystemPrompt = v
+	}
 	if v, ok := flags["max-context-tokens"]; ok && v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.MaxContextTokens = n
@@ -158,9 +167,6 @@ func applyFlags(cfg *Config, flags map[string]string) {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.MaxTokens = n
 		}
-	}
-	if v, ok := flags["bearer-token"]; ok && v != "" {
-		cfg.BearerToken = v
 	}
 	if v, ok := flags["debug"]; ok && v == "true" {
 		cfg.Debug = true
@@ -194,6 +200,9 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.BearerToken != "" {
 		dst.BearerToken = src.BearerToken
+	}
+	if src.SystemPrompt != "" {
+		dst.SystemPrompt = src.SystemPrompt
 	}
 	if src.MaxContextTokens > 0 {
 		dst.MaxContextTokens = src.MaxContextTokens

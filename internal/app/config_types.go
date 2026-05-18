@@ -8,6 +8,7 @@ type Config struct {
 	Endpoint            string  `yaml:"endpoint"`
 	BearerToken         string  `yaml:"bearer_token"`
 	CWD                 string  `yaml:"cwd"`
+	SystemPrompt        string  `yaml:"system_prompt"` // Custom system prompt for one-shot runs
 	MaxContextTokens    int     `yaml:"max_context_tokens"`
 	CompactionThreshold float64 `yaml:"compaction_threshold"`
 	KeepRecentTokens    int     `yaml:"keep_recent_tokens"`

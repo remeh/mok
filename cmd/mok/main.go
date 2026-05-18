@@ -29,6 +29,7 @@ func main() {
 	model := flag.String("model", "", "LLM model name")
 	endpoint := flag.String("endpoint", "", "API endpoint URL")
 	bearerToken := flag.String("bearer-token", "", "Bearer token for API authentication")
+	systemPrompt := flag.String("system-prompt", "", "Custom system prompt (for one-shot runs with -p)")
 	maxContext := flag.Int("max-context-tokens", 0, "Max context tokens")
 	maxTokens := flag.Int("max-tokens", 0, "Max response tokens")
 	debug := flag.Bool("debug", false, "Enable debug logging to stderr")
@@ -45,6 +46,7 @@ func main() {
 		"model":              *model,
 		"endpoint":           *endpoint,
 		"bearer-token":       *bearerToken,
+		"system-prompt":      *systemPrompt,
 		"max-context-tokens": fmt.Sprintf("%d", *maxContext),
 		"max-tokens":         fmt.Sprintf("%d", *maxTokens),
 		"debug":              fmt.Sprintf("%t", *debug),
@@ -104,9 +106,10 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
 	agt := agent.NewAgent(client, agent.AgentConfig{
-		Model:     cfg.Model,
-		MaxTokens: cfg.MaxTokens,
-		CWD:       cfg.CWD,
+		Model:        cfg.Model,
+		MaxTokens:    cfg.MaxTokens,
+		CWD:          cfg.CWD,
+		SystemPrompt: cfg.SystemPrompt,
 	}, toolRegistry, debug)
 
 	startTime := time.Now()

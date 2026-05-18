@@ -15,6 +15,7 @@ type AgentConfig struct {
 	Model               string
 	MaxTokens           int
 	CWD                 string
+	SystemPrompt        string // Custom system prompt (empty = use default)
 	MaxContextTokens    int
 	CompactionThreshold float64
 	KeepRecentTokens    int
@@ -36,7 +37,14 @@ type Agent struct {
 
 // NewAgent creates a new Agent.
 func NewAgent(client *llm.Client, cfg AgentConfig, toolRegistry *tools.Registry, debug *DebugLogger) *Agent {
-	prompt := BuildSystemPrompt(&PromptConfig{CWD: cfg.CWD, Tools: toolRegistry})
+	var prompt string
+	if cfg.SystemPrompt != "" {
+		// Use custom system prompt
+		prompt = cfg.SystemPrompt
+	} else {
+		// Build default system prompt
+		prompt = BuildSystemPrompt(&PromptConfig{CWD: cfg.CWD, Tools: toolRegistry})
+	}
 	a := &Agent{
 		client:       client,
 		config:       cfg,

@@ -94,6 +94,7 @@ Precedence: defaults → YAML file → env vars → CLI flags.
 - `endpoint` — OpenAI-compatible API endpoint
 - `bearer_token` — API authentication token
 - `cwd` — Working directory
+- `system_prompt` — Custom system prompt (for one-shot runs)
 - `max_context_tokens` — Maximum context window size
 - `compaction_threshold` — Trigger compaction at this fraction of max context (e.g., 0.8)
 - `keep_recent_tokens` — Minimum tokens to preserve at end of history after compaction
@@ -106,11 +107,31 @@ Precedence: defaults → YAML file → env vars → CLI flags.
 - `autocomplete_max_items` — Max suggestions to show (default: 10)
 - `tab_completes` — Enable Tab for completion (default: true)
 
-**Env vars**: `MOK_MODEL`, `MOK_ENDPOINT`, `MOK_BEARER_TOKEN`, `MOK_MAX_CONTEXT_TOKENS`, `MOK_COMPACTION_THRESHOLD`, `MOK_KEEP_RECENT_TOKENS`, `MOK_MAX_TOKENS`, `MOK_DEBUG`, `MOK_UI_LOG_PATH`, `MOK_ENABLE_MULTILINE`, `MOK_ENABLE_AUTOCOMPLETE`, `MOK_AUTOCOMPLETE_MAX_ITEMS`, `MOK_TAB_COMPLETES`.
+**Env vars**: `MOK_MODEL`, `MOK_ENDPOINT`, `MOK_BEARER_TOKEN`, `MOK_SYSTEM_PROMPT`, `MOK_MAX_CONTEXT_TOKENS`, `MOK_COMPACTION_THRESHOLD`, `MOK_KEEP_RECENT_TOKENS`, `MOK_MAX_TOKENS`, `MOK_DEBUG`, `MOK_UI_LOG_PATH`, `MOK_ENABLE_MULTILINE`, `MOK_ENABLE_AUTOCOMPLETE`, `MOK_AUTOCOMPLETE_MAX_ITEMS`, `MOK_TAB_COMPLETES`.
 
-**CLI flags**: `-model`, `-endpoint`, `-bearer-token`, `-max-context-tokens`, `-max-tokens`, `-debug`, `-p` (prompt), `-t` (timeout), `-version`, `-ui-log-path`.
+**CLI flags**: `-model`, `-endpoint`, `-bearer-token`, `-system-prompt`, `-max-context-tokens`, `-max-tokens`, `-debug`, `-p` (prompt), `-t` (timeout), `-version`, `-ui-log-path`.
 
 **File locations**: `./mok.yaml`, `./config.yaml`, `~/.config/mok/config.yaml`.
+
+## One-Shot Runs
+
+Use the `-system-prompt` flag with `-p` to run mok as a one-shot LLM client without implementing your own API client library:
+
+```bash
+./mok -p "Write a Python function to sort a list" \
+  -system-prompt "You are a Python coding assistant. Provide concise, correct code with brief explanations." \
+  -endpoint http://localhost:8000/v1 \
+  -model gemma4-e4b \
+  -t 120
+```
+
+This is useful for:
+- Quick LLM queries without TUI overhead
+- Scripting and automation
+- Testing different system prompts
+- Integrating mok as a lightweight LLM client
+
+When `-system-prompt` is provided, it overrides the default coding assistant prompt. Without it, the default prompt (with tools, date, CWD, and context files) is used.
 
 ## Current State
 
