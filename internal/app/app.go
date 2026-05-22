@@ -868,8 +868,8 @@ func (m *AppModel) recreateAgent() {
 func (m *AppModel) submitMessage(text string) tea.Cmd {
 	quitCmd, interpreted := m.handleCommand(text)
 	if quitCmd != nil {
-		m.Screen.GetInputArea().SetValue("")
 		m.Screen.GetInputArea().PushHistory()
+		m.Screen.GetInputArea().SetValue("")
 		return quitCmd
 	}
 	// the command has been interpreted, we don't have to go further
@@ -886,8 +886,8 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 	if m.UILogWriter != nil {
 		m.UILogWriter.LogUserInput(text)
 	}
-	m.Screen.GetInputArea().SetValue("")
 	m.Screen.GetInputArea().PushHistory()
+	m.Screen.GetInputArea().SetValue("")
 	m.Screen.SetMessages(m.Messages)
 	m.Screen.GetMessageView().ScrollToBottom()
 

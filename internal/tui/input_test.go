@@ -815,9 +815,10 @@ func TestInputHandleKeyEscExitsHistoryMode(t *testing.T) {
 	input := setupInput(t)
 
 	// Setup: put input in history mode
-	input.historyMode = true
-	input.historyIdx = -1
+	input.history = []string{"old prompt"}
+	input.historyIdx = 0
 	input.originalValue = ""
+	input.originalCursor = 0
 
 	handled := input.HandleKey(tea.KeyEsc)
 
@@ -825,7 +826,7 @@ func TestInputHandleKeyEscExitsHistoryMode(t *testing.T) {
 		t.Error("HandleKey should return true for ESC in history mode")
 	}
 
-	if input.historyMode {
-		t.Error("historyMode should be false after pressing ESC")
+	if input.historyIdx != -1 {
+		t.Error("historyIdx should be -1 after pressing ESC")
 	}
 }

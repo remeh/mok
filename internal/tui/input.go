@@ -16,16 +16,15 @@ type InputArea struct {
 	cursorCol    int      // current column (0-indexed, rune offset in line)
 	scrollOffset int      // vertical scroll offset for view
 	history      []string
-	historyIdx   int
+	historyIdx   int // -1 = not browsing history, 0..N = index into history (0=oldest, N=most recent)
 	prompt       string
 	width        int
 	focused      bool
 	blocked      bool
 
-	// History mode state
-	historyMode    bool   // true when browsing history
-	originalValue  string // saved value when entering history
-	originalCursor int    // saved cursor position (byte position in flattened text)
+	// History navigation state (saved when first pressing Up)
+	originalValue  string // value before entering history
+	originalCursor int    // cursor position as byte offset in flattened text
 
 	// Autocomplete state
 	autocomplete    *AutocompleteState
@@ -132,16 +131,17 @@ func (i *InputArea) PushHistory() {
 
 // exitHistoryMode exits history browsing mode and restores original state.
 func (i *InputArea) exitHistoryMode() {
-	i.historyMode = false
+	i.SetValue(i.originalValue)
+	i.setCursorFromFlattenedPos(i.originalCursor)
 	i.originalValue = ""
 	i.originalCursor = 0
+	i.historyIdx = -1
 }
 
 // enterHistoryMode saves current state and enters history browsing mode.
 func (i *InputArea) enterHistoryMode() {
-	i.historyMode = true
 	i.originalValue = i.Value()
-	i.originalCursor = i.cursorCol
+	i.originalCursor = i.getCurrentFlattenedPos()
 }
 
 // getCurrentFlattenedPos returns the current cursor position as a byte offset in flattened text.
@@ -179,37 +179,43 @@ func (i *InputArea) setCursorFromFlattenedPos(pos int) {
 	i.cursorCol = len(i.lines[i.cursorRow])
 }
 
-// navigateHistoryUp loads the previous history entry.
+// navigateHistoryUp loads the previous (older) history entry.
+// First call loads the most recent entry.
 func (i *InputArea) navigateHistoryUp() {
 	if len(i.history) == 0 {
 		return
 	}
+	if i.historyIdx == -1 {
+		// First time entering history: load most recent
+		i.enterHistoryMode()
+		i.historyIdx = len(i.history) - 1
+	} else if i.historyIdx > 0 {
+		// Go to older entry
+		i.historyIdx--
+	}
+	// If historyIdx == 0, already at oldest, do nothing
+	i.SetValue(i.history[i.historyIdx])
+	// Move cursor to end
+	i.cursorRow = len(i.lines) - 1
+	i.cursorCol = len([]rune(i.lines[i.cursorRow]))
+}
+
+// navigateHistoryDown loads the next (newer) history entry, or restores original if at the top.
+func (i *InputArea) navigateHistoryDown() {
+	if i.historyIdx == -1 {
+		// Not in history mode, do nothing
+		return
+	}
 	if i.historyIdx < len(i.history)-1 {
+		// Go to newer entry
 		i.historyIdx++
 		i.SetValue(i.history[i.historyIdx])
 		// Move cursor to end
 		i.cursorRow = len(i.lines) - 1
 		i.cursorCol = len([]rune(i.lines[i.cursorRow]))
-	}
-}
-
-// navigateHistoryDown loads the next history entry (or clears if at most recent).
-func (i *InputArea) navigateHistoryDown() {
-	if len(i.history) == 0 {
-		return
-	}
-	if i.historyIdx >= 0 {
-		i.historyIdx--
-		if i.historyIdx < 0 {
-			// No more history, clear input
-			i.SetValue("")
-			i.historyIdx = -1
-		} else {
-			i.SetValue(i.history[i.historyIdx])
-		}
-		// Move cursor to end
-		i.cursorRow = len(i.lines) - 1
-		i.cursorCol = len([]rune(i.lines[i.cursorRow]))
+	} else {
+		// Past the most recent: restore original value
+		i.exitHistoryMode()
 	}
 }
 
@@ -352,7 +358,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 	}
 
 	// Check if we should exit history mode
-	if i.historyMode {
+	if i.historyIdx != -1 {
 		switch msg {
 		case tea.KeyUp, tea.KeyDown:
 			// Stay in history mode for up/down navigation
@@ -382,11 +388,8 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			return true
 		}
 
-		// If at line start (row=0, col=0), navigate history up
-		if i.cursorRow == 0 && i.cursorCol == 0 && len(i.history) > 0 {
-			if !i.historyMode {
-				i.enterHistoryMode()
-			}
+		// History navigation: if already in history mode, or at line start with history available
+		if i.historyIdx != -1 || (i.cursorRow == 0 && i.cursorCol == 0 && len(i.history) > 0) {
 			i.navigateHistoryUp()
 			return true
 		}
@@ -407,11 +410,8 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			return true
 		}
 
-		// If at line start and at last line, navigate history down
-		if i.cursorRow == len(i.lines)-1 && i.cursorCol == 0 && len(i.history) > 0 {
-			if !i.historyMode {
-				i.enterHistoryMode()
-			}
+		// History navigation: if in history mode, go down (or exit history)
+		if i.historyIdx != -1 {
 			i.navigateHistoryDown()
 			return true
 		}
@@ -492,19 +492,13 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 
 	case tea.KeyCtrlP: // History up (alternative to Up at line start)
 		if len(i.history) > 0 {
-			if !i.historyMode {
-				i.enterHistoryMode()
-			}
 			i.navigateHistoryUp()
 			return true
 		}
 		return false
 
 	case tea.KeyCtrlN: // History down (alternative to Down at line start)
-		if len(i.history) > 0 {
-			if !i.historyMode {
-				i.enterHistoryMode()
-			}
+		if i.historyIdx != -1 {
 			i.navigateHistoryDown()
 			return true
 		}
@@ -565,7 +559,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 
 	case tea.KeyTab: // Tab: activate or navigate autocomplete
 		// Exit history mode if active
-		if i.historyMode {
+		if i.historyIdx != -1 {
 			i.exitHistoryMode()
 		}
 
@@ -584,7 +578,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			return true
 		}
 		// Also exit history mode
-		if i.historyMode {
+		if i.historyIdx != -1 {
 			i.exitHistoryMode()
 			return true
 		}
