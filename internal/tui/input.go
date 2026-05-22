@@ -25,6 +25,7 @@ type InputArea struct {
 	// History navigation state (saved when first pressing Up)
 	originalValue  string // value before entering history
 	originalCursor int    // cursor position as byte offset in flattened text
+	hasTyped       bool   // true if the user has typed anything since last submit
 
 	// Autocomplete state
 	autocomplete    *AutocompleteState
@@ -64,6 +65,7 @@ func (i *InputArea) SetBlocked(blocked bool) {
 
 // SetValue sets the input value, splitting on newlines.
 func (i *InputArea) SetValue(v string) {
+	i.hasTyped = false
 	if v == "" {
 		i.lines = []string{""}
 		i.cursorRow = 0
@@ -133,6 +135,14 @@ func (i *InputArea) PushHistory() {
 func (i *InputArea) exitHistoryMode() {
 	i.SetValue(i.originalValue)
 	i.setCursorFromFlattenedPos(i.originalCursor)
+	i.originalValue = ""
+	i.originalCursor = 0
+	i.historyIdx = -1
+}
+
+// exitHistoryKeepValue exits history browsing mode but keeps the current text
+// (treats the current prompt as a new prompt the user is editing).
+func (i *InputArea) exitHistoryKeepValue() {
 	i.originalValue = ""
 	i.originalCursor = 0
 	i.historyIdx = -1
@@ -367,7 +377,9 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			// ESC will be handled in the main switch (dismiss autocomplete, then exit history mode)
 			// Fall through to the main switch
 		default:
-			i.exitHistoryMode()
+			// Any other key (typing, cursor movement, editing) exits history mode
+			// but keeps the current text as a new prompt.
+			i.exitHistoryKeepValue()
 		}
 	}
 
@@ -388,8 +400,8 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			return true
 		}
 
-		// History navigation: if already in history mode, or at line start with history available
-		if i.historyIdx != -1 || (i.cursorRow == 0 && i.cursorCol == 0 && len(i.history) > 0) {
+		// History navigation: only if already in history mode, or at line start with no typed input
+		if i.historyIdx != -1 || (!i.hasTyped && i.cursorRow == 0 && i.cursorCol == 0 && len(i.history) > 0) {
 			i.navigateHistoryUp()
 			return true
 		}
@@ -410,7 +422,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 			return true
 		}
 
-		// History navigation: if in history mode, go down (or exit history)
+		// History navigation: only if in history mode
 		if i.historyIdx != -1 {
 			i.navigateHistoryDown()
 			return true
@@ -491,7 +503,7 @@ func (i *InputArea) HandleKey(msg tea.KeyType) (handled bool) {
 		return true
 
 	case tea.KeyCtrlP: // History up (alternative to Up at line start)
-		if len(i.history) > 0 {
+		if !i.hasTyped && len(i.history) > 0 {
 			i.navigateHistoryUp()
 			return true
 		}
@@ -623,6 +635,7 @@ func (i *InputArea) HandleRune(r rune) {
 	insertPos := i.cursorCol
 	i.lines[i.cursorRow] = string(runes[:insertPos]) + string(r) + string(runes[insertPos:])
 	i.cursorCol++
+	i.hasTyped = true
 
 	// Auto-activate autocomplete when / is typed at position (0,0) - very first line, very first char
 	if r == '/' && !i.autocomplete.IsActive() {
