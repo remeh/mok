@@ -311,8 +311,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Action != tea.MouseActionPress {
 				break
 			}
+			contentHeight := m.Screen.GetContentHeight()
 			// Click within the message view area to toggle expand/collapse
-			if msg.Y < m.Screen.GetContentHeight() {
+			if msg.Y < contentHeight {
 				idx := m.Screen.GetMessageView().MessageAtY(msg.Y)
 				if idx >= 0 && idx < len(m.Messages) {
 					msgAtClick := m.Messages[idx]
@@ -932,6 +933,7 @@ func formatTurnStats(endTime time.Time, duration time.Duration, usage *llm.Usage
 	}
 	return strings.Join(parts, " · ")
 }
+
 
 // Run starts the bubbletea program.
 func Run(cfg *Config) error {

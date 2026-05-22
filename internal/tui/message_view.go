@@ -507,13 +507,21 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 
 // MessageAtY returns the message index at a given screen Y coordinate (0-based),
 // or -1 if no message is at that position.
+//
+// Computes line offsets directly from the render cache rather than relying on
+// the cached lineRanges field (which is only rebuilt during Render()). This
+// ensures correctness even when ensureRendered() has been called between
+// Render() calls (e.g. by MessageGrew() after a click-to-expand).
 func (v *MessageView) MessageAtY(y int) int {
-	// Convert screen Y to absolute line index.
 	absLine := y + v.scrollPos
-	for _, lr := range v.lineRanges {
-		if absLine >= lr.startLine && absLine < lr.endLine {
-			return lr.msgIndex
+	v.ensureRendered()
+	offset := 0
+	for i := range v.messages {
+		end := offset + len(v.rendered[i].lines)
+		if absLine >= offset && absLine < end {
+			return i
 		}
+		offset = end
 	}
 	return -1
 }

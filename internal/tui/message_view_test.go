@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -522,5 +523,341 @@ func TestAddMessageDoesNotUnpin(t *testing.T) {
 	}
 	if v.scrollPos != pinnedPos {
 		t.Errorf("scrollPos = %d, want %d (preserved across AddMessage)", v.scrollPos, pinnedPos)
+	}
+}
+
+// TestMessageAtYBaseline verifies MessageAtY correctly maps screen Y
+// coordinates to message indices for a simple message layout.
+func TestMessageAtYBaseline(t *testing.T) {
+	v := setupMessageView(t)
+	v.SetDimensions(80, 20)
+
+	// Create a mix of message types, some expandable.
+	msgs := []*types.Message{
+		types.NewMessage(types.MsgUser, "hello world"),          // ~2 lines
+		types.NewMessage(types.MsgAssistant, "## Response\n\nSome *markdown* content."),
+		func() *types.Message {
+			m := types.NewToolResult("read", "line a\nline b\nline c\n", false)
+			return m // Collapsed by default, with summary
+		}(),
+		types.NewMessage(types.MsgUser, "another message"),
+	}
+	v.SetMessages(msgs)
+	v.Render()
+
+	totalLines := v.totalLineCount()
+	if totalLines == 0 {
+		t.Fatal("total line count should be > 0")
+	}
+
+	// Every valid Y should map to a message.
+	for y := 0; y < v.visible; y++ {
+		idx := v.MessageAtY(y)
+		absLine := y + v.scrollPos
+		if absLine >= totalLines {
+			// Y maps to padding area below messages — should return -1
+			if idx != -1 {
+				t.Errorf("MessageAtY(%d) on padding line (abs=%d, total=%d) = %d, want -1",
+					y, absLine, totalLines, idx)
+			}
+			continue
+		}
+		if idx < 0 || idx >= len(msgs) {
+			t.Errorf("MessageAtY(%d) = %d, want valid index in [0, %d) (absLine=%d, total=%d)",
+				y, idx, len(msgs), absLine, totalLines)
+		}
+	}
+}
+
+// TestMessageAtYBoundaries checks edge cases: exactly at message boundaries,
+// one line before start, one line after end.
+func TestMessageAtYBoundaries(t *testing.T) {
+	v := setupMessageView(t)
+	v.SetDimensions(80, 20)
+
+	msgs := []*types.Message{
+		types.NewMessage(types.MsgUser, "first user message"),
+		func() *types.Message {
+			m := types.NewToolResult("bash", "command output here", false)
+			return m // Collapsed — should be 1 line
+		}(),
+		types.NewMessage(types.MsgAssistant, "final response"),
+	}
+	v.SetMessages(msgs)
+	v.Render()
+
+	// Collect line ranges.
+	ranges := make([]struct{ idx, start, end int }, 0)
+	for i := range v.lineRanges {
+		ranges = append(ranges, struct{ idx, start, end int }{
+			idx:   v.lineRanges[i].msgIndex,
+			start: v.lineRanges[i].startLine,
+			end:   v.lineRanges[i].endLine,
+		})
+	}
+
+	if len(ranges) < 3 {
+		t.Fatalf("expected at least 3 line ranges, got %d", len(ranges))
+	}
+
+	// Test each range's boundaries.
+	for _, r := range ranges {
+		// Line before start should map to different message (or -1 if at very beginning).
+		if r.start > 0 {
+			prev := v.MessageAtY(r.start - 1)
+			if prev == r.idx {
+				t.Errorf("line before msg %d (absLine=%d) should not return same message, got %d",
+					r.idx, r.start-1, prev)
+			}
+		}
+
+		// First line of message should map to this message.
+		first := v.MessageAtY(r.start)
+		if first != r.idx {
+			t.Errorf("first line of msg %d (absLine=%d) = %d, want %d",
+				r.idx, r.start, first, r.idx)
+		}
+
+		// Last line of message should map to this message.
+		if r.end > r.start {
+			last := v.MessageAtY(r.end - 1)
+			if last != r.idx {
+				t.Errorf("last line of msg %d (absLine=%d) = %d, want %d",
+					r.idx, r.end-1, last, r.idx)
+			}
+		}
+
+		// Line after end should map to next message.
+		totalLines := v.totalLineCount()
+		if r.end < totalLines {
+			after := v.MessageAtY(r.end)
+			if after == r.idx {
+				t.Errorf("line after msg %d (absLine=%d) should not return same message, got %d",
+					r.idx, r.end, after)
+			}
+		}
+	}
+}
+
+// TestMessageAtYWithScrolling verifies MessageAtY works correctly when the
+// viewport is scrolled.
+func TestMessageAtYWithScrolling(t *testing.T) {
+	v := setupMessageView(t)
+	v.SetDimensions(80, 10)
+
+	// Create enough messages to force scrolling.
+	var msgs []*types.Message
+	for i := 0; i < 30; i++ {
+		msgs = append(msgs, types.NewMessage(types.MsgUser, fmt.Sprintf("message %d", i)))
+	}
+	v.SetMessages(msgs)
+	v.Render()
+
+	totalLines := v.totalLineCount()
+
+	// Scroll to various positions and verify mapping.
+	testPositions := []int{0, 5, totalLines/3, totalLines/2, totalLines - v.visible}
+	for _, scrollPos := range testPositions {
+		if scrollPos < 0 {
+			scrollPos = 0
+		}
+		v.scrollPos = scrollPos
+		v.Render() // Rebuild lineRanges with current scrollPos
+
+		for y := 0; y < v.visible; y++ {
+			absLine := y + v.scrollPos
+			idx := v.MessageAtY(y)
+			if absLine >= totalLines {
+				if idx != -1 {
+					t.Errorf("scrollPos=%d, Y=%d (abs=%d, total=%d) = %d, want -1",
+						scrollPos, y, absLine, totalLines, idx)
+				}
+				continue
+			}
+			if idx < 0 || idx >= len(msgs) {
+				t.Errorf("scrollPos=%d, Y=%d (abs=%d) = %d, invalid index",
+					scrollPos, y, absLine, idx)
+			}
+		}
+	}
+}
+
+// TestMessageAtYCollapsedToolResult verifies that a collapsed tool result
+// (1 line) maps correctly and can be clicked to expand.
+func TestMessageAtYCollapsedToolResult(t *testing.T) {
+	v := setupMessageView(t)
+	v.SetDimensions(80, 20)
+
+	msgs := []*types.Message{
+		types.NewMessage(types.MsgUser, "preface"),
+		func() *types.Message {
+			m := types.NewToolResult("bash", "some long output\nwith multiple lines\nof content", false)
+			return m // Collapsed, has Summary
+		}(),
+		types.NewMessage(types.MsgAssistant, "post"),
+	}
+	v.SetMessages(msgs)
+	v.Render()
+
+	// The tool result should be collapsed (1 line). Find it in lineRanges.
+	var toolIdx int
+	for i, lr := range v.lineRanges {
+		if lr.msgIndex == 1 { // Second message (index 1) is the tool result
+			toolIdx = i
+			break
+		}
+	}
+	lr := v.lineRanges[toolIdx]
+	lineCount := lr.endLine - lr.startLine
+	if lineCount != 1 {
+		t.Logf("collapsed tool result has %d lines (expected 1) — may be rendered differently", lineCount)
+	}
+
+	// Click anywhere on that line should return idx 1.
+	// Since the viewport shows the top, the tool result's absolute line = its start line.
+	// screenY = absLine - scrollPos.
+	screenY := lr.startLine - v.scrollPos
+	if screenY < v.visible {
+		got := v.MessageAtY(screenY)
+		if got != 1 {
+			t.Errorf("MessageAtY(%d) = %d, want 1 (collapsed tool result)", screenY, got)
+		}
+	}
+
+	// Now expand and verify the line range grows.
+	msgs[1].Collapsed = false
+	v.Render()
+	expandedCount := v.lineRanges[toolIdx].endLine - v.lineRanges[toolIdx].startLine
+	if expandedCount <= lineCount {
+		t.Errorf("expanded tool result has %d lines, should be > collapsed count %d", expandedCount, lineCount)
+	}
+}
+
+// TestMessageAtYThinkingToggle verifies that a message with thinking text
+// is found correctly and can be toggled.
+func TestMessageAtYThinkingToggle(t *testing.T) {
+	v := setupMessageView(t)
+	v.SetDimensions(80, 20)
+
+	msgs := []*types.Message{
+		types.NewMessage(types.MsgUser, "preface"),
+		func() *types.Message {
+			m := types.NewMessage(types.MsgAssistant, "the answer")
+			// Long enough to wrap when expanded, so line count visibly grows.
+			m.ThinkingText = "hmm let me think about this carefully, this is a longer thinking text that should wrap to multiple lines when expanded so we can verify the line count changes"
+			return m
+		}(),
+	}
+	v.SetMessages(msgs)
+	v.Render()
+
+	// Thinking is collapsed — the indicator is 1 line.
+	// Find the message's line range.
+	var msgLR messageLineRange
+	for _, lr := range v.lineRanges {
+		if lr.msgIndex == 1 {
+			msgLR = lr
+			break
+		}
+	}
+
+	collapsedLines := msgLR.endLine - msgLR.startLine
+
+	// Click on the thinking indicator line (first line of message).
+	screenY := msgLR.startLine - v.scrollPos
+	got := v.MessageAtY(screenY)
+	if got != 1 {
+		t.Errorf("MessageAtY(%d) = %d, want 1 (thinking collapsed indicator)", screenY, got)
+	}
+
+	// Expand thinking and verify line count grows.
+	msgs[1].ThinkingExpanded = true
+	v.Render()
+
+	var expandedLR messageLineRange
+	for _, lr := range v.lineRanges {
+		if lr.msgIndex == 1 {
+			expandedLR = lr
+			break
+		}
+	}
+	expandedLines := expandedLR.endLine - expandedLR.startLine
+	if expandedLines <= collapsedLines {
+		t.Errorf("expanded thinking has %d lines, should be > collapsed count %d", expandedLines, collapsedLines)
+	}
+}
+
+// TestMessageAtYAfterCacheInvalidation verifies that MessageAtY still works
+// after ensureRendered modifies the cache without a subsequent Render() call.
+// This simulates the condition where MessageGrew() triggers re-rendering
+// between two Render() calls.
+func TestMessageAtYAfterCacheInvalidation(t *testing.T) {
+	v := setupMessageView(t)
+	v.SetDimensions(80, 20)
+
+	// Start with a collapsed tool result.
+	toolResult := types.NewToolResult("bash", "line1\nline2\nline3", false)
+	msgs := []*types.Message{
+		types.NewMessage(types.MsgUser, "preface"),
+		toolResult,
+		types.NewMessage(types.MsgAssistant, "post"),
+	}
+	v.SetMessages(msgs)
+	v.Render()
+
+	// Verify MessageAtY works before cache modification.
+	collapsedLine := -1
+	for _, lr := range v.lineRanges {
+		if lr.msgIndex == 1 {
+			collapsedLine = lr.startLine
+			break
+		}
+	}
+	if collapsedLine < 0 {
+		t.Fatal("could not find tool result in line ranges")
+	}
+
+	// Now simulate a click-to-expand: toggle Collapsed and call MessageGrew.
+	// This mirrors the exact sequence in the click handler.
+	toolResult.Collapsed = false
+	v.MessageGrew()
+
+	// At this point, v.rendered has been updated by ensureRendered() inside
+	// MessageGrew() -> maybeFollowTail() -> totalLineCount().
+	// But v.lineRanges still reflects the OLD (collapsed) layout.
+	// If MessageAtY uses stale lineRanges, this test will fail.
+
+	// Now click again on the expanded result. The expanded result takes more
+	// lines, so clicking at the same screen Y should still find the message.
+	// But if lineRanges is stale, it might return the wrong index.
+
+	// Test: the first line of the expanded message should still resolve.
+	screenY := collapsedLine - v.scrollPos
+	got := v.MessageAtY(screenY)
+	if got != 1 {
+		t.Errorf("after MessageGrew (cache invalidation), MessageAtY(%d) = %d, want 1", screenY, got)
+	}
+
+	// Test: a line that was within message 2 (the assistant) in the old layout
+	// should now be within the expanded tool result in the new layout.
+	// We need to find where message 2 starts in the OLD lineRanges.
+	oldAssistantStart := -1
+	for _, lr := range v.lineRanges {
+		if lr.msgIndex == 2 {
+			oldAssistantStart = lr.startLine
+			break
+		}
+	}
+	if oldAssistantStart < 0 {
+		t.Fatal("could not find assistant message in old line ranges")
+	}
+
+	// In the old layout, oldAssistantStart is the first line of the assistant msg.
+	// In the new layout (after expansion), that same absolute line should be
+	// within the expanded tool result. MessageAtY should return 1, not 2.
+	got2 := v.MessageAtY(oldAssistantStart - v.scrollPos)
+	if got2 == 2 {
+		t.Errorf("STALE LINE RANGES BUG: after MessageGrew, MessageAtY(%d) = %d (assistant msg), but expanded tool result now occupies that line — should return 1",
+			oldAssistantStart-v.scrollPos, got2)
 	}
 }
