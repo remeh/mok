@@ -185,13 +185,15 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.agentRunning {
 				m.abortAgent()
 			}
-			m.quitting = true
+			// Render session summary to stdout before quitting
+			m.renderQuitSummary()
 			if m.Debug != nil {
 				m.Debug.Close()
 			}
 			if m.UILogWriter != nil {
 				m.UILogWriter.Close()
 			}
+			m.quitting = true
 			return m, tea.Quit
 
 		case tea.KeyEsc:
@@ -534,6 +536,83 @@ func (m *AppModel) expandAllToolResults() {
 	}
 }
 
+// renderQuitSummary outputs the conversation history to stdout in collapsed form.
+// This is called when quitting to allow users to scroll back and review the session.
+func (m *AppModel) renderQuitSummary() {
+	if len(m.Messages) == 0 {
+		fmt.Println("No conversation history.")
+		return
+	}
+
+	// Header
+	fmt.Println(strings.Repeat("=", 80))
+	fmt.Println("MOK SESSION SUMMARY")
+	fmt.Printf("Model: %s | Endpoint: %s\n", m.Config.Model, m.Config.Endpoint)
+	fmt.Println(strings.Repeat("=", 80))
+	fmt.Println()
+
+	for _, msg := range m.Messages {
+		// Skip turn stats in the main output (they're metadata)
+		if msg.IsTurnStats {
+			continue
+		}
+
+		// Timestamp for user and system messages
+		if (msg.Type == types.MsgUser || msg.Type == types.MsgSystem) && !msg.Timestamp.IsZero() {
+			fmt.Printf("[%s]\n", msg.Timestamp.Format("15:04:05"))
+		}
+
+		switch msg.Type {
+		case types.MsgUser:
+			fmt.Printf("> %s\n", msg.Content)
+			fmt.Println()
+
+		case types.MsgAssistant:
+			if msg.ThinkingText != "" {
+				fmt.Println("[thinking] (collapsed)")
+			}
+			if msg.Content != "" {
+				// Plain text output (no markdown rendering for stdout)
+				fmt.Println(msg.Content)
+			}
+			fmt.Println()
+
+		case types.MsgSystem:
+			fmt.Printf("[system] %s\n", msg.Content)
+			fmt.Println()
+
+		case types.MsgToolCall:
+			fmt.Printf("[%s] %s\n", msg.ToolName, truncateForOutput(msg.ToolArgs, 200))
+			fmt.Println()
+
+		case types.MsgToolResult:
+			// Always show collapsed summary
+			if msg.Summary != "" {
+				status := "✓"
+				if msg.IsError {
+					status = "✗"
+				}
+				fmt.Printf("[%s] %s %s\n", msg.ToolName, status, msg.Summary)
+			}
+			fmt.Println()
+		}
+	}
+
+	// Footer with final stats
+	fmt.Println(strings.Repeat("=", 80))
+	fmt.Println("END OF SESSION")
+	fmt.Println(strings.Repeat("=", 80))
+}
+
+// truncateForOutput truncates long strings for stdout display.
+func truncateForOutput(s string, maxLen int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
 // openEditor creates a temp file with the current input, launches $EDITOR
 // (falling back to vi), and on exit reads the file back into the input area.
 func (m *AppModel) openEditor() tea.Cmd {
@@ -613,13 +692,15 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 
 	switch cmd {
 	case "exit", "quit":
-		m.quitting = true
+		// Render session summary to stdout before quitting
+		m.renderQuitSummary()
 		if m.Debug != nil {
 			m.Debug.Close()
 		}
 		if m.UILogWriter != nil {
 			m.UILogWriter.Close()
 		}
+		m.quitting = true
 		return tea.Quit, true
 
 	case "clear":

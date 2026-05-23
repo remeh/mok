@@ -231,6 +231,13 @@ When `-system-prompt` is provided, it overrides the default coding assistant pro
 - Includes model, endpoint, full message history
 - Configurable via `MOK_UI_LOG_PATH` or `-ui-log-path`
 
+**Quit summary**: When quitting the TUI (via `/quit`, `/exit`, or Ctrl+C), the conversation history is automatically printed to stdout in a collapsed, scrollable format. This allows you to review the entire session after exiting:
+- User messages shown with `>` prefix and timestamps
+- Assistant messages with `[thinking] (collapsed)` indicator
+- Tool calls and results shown in collapsed form with summaries
+- Plain text output (no ANSI codes) for easy redirection
+- Accessible via both interactive quit commands and Ctrl+C
+
 ### Not Yet Implemented
 
 - No conversation history persistence across sessions (in-memory only)
