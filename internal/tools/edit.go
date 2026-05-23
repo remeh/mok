@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // EditArgs represents the edit tool arguments.
@@ -100,7 +98,7 @@ func (t *EditTool) Execute(args json.RawMessage) (string, error) {
 	modified := originalStr[:idx] + editArgs.NewText + originalStr[idx+len(editArgs.OldText):]
 
 	// Generate compact unified diff with context
-	unifiedDiff := generateCompactDiff(originalStr, modified, resolved)
+	unifiedDiff := generateCompactDiff(originalStr, modified, resolved, idx, len(editArgs.OldText), len(editArgs.NewText))
 
 	// Write the modified file
 	if err := os.WriteFile(resolved, []byte(modified), 0644); err != nil {
@@ -119,196 +117,79 @@ func truncateForError(s string) string {
 
 // generateCompactDiff creates a compact unified diff showing only
 // changed lines with minimal context (3 lines before/after).
-func generateCompactDiff(oldContent, newContent, path string) string {
-	var buf strings.Builder
+//
+// Since edits are a single contiguous search/replace at a known byte offset,
+// we derive the affected line range directly from the offset instead of running
+// a generic diff algorithm — this avoids miscounting line numbers on sub-line
+// edits (e.g. replacing a word inside a line).
+func generateCompactDiff(oldContent, newContent, path string, idx, oldLen, newLen int) string {
+	const contextLines = 3
 
-	// Split into lines
 	oldLines := strings.Split(oldContent, "\n")
 	newLines := strings.Split(newContent, "\n")
 
-	// Generate diff using go-diff
-	dmp := diffmatchpatch.New()
-	diffs := dmp.DiffMain(oldContent, newContent, false)
-
-	// Track line numbers
-	oldLineNum := 1
-	newLineNum := 1
-
-	// Find all change regions
-	type changeRegion struct {
-		oldStart, oldEnd int // line numbers (1-indexed)
-		newStart, newEnd int
-		hasOld           bool
-		hasNew           bool
+	// Expand the byte range to whole-line boundaries in the old content.
+	oldStartByte := idx
+	for oldStartByte > 0 && oldContent[oldStartByte-1] != '\n' {
+		oldStartByte--
+	}
+	oldEndByte := idx + oldLen
+	for oldEndByte < len(oldContent) && oldContent[oldEndByte] != '\n' {
+		oldEndByte++
 	}
 
-	var regions []changeRegion
-	var currentRegion *changeRegion
+	// Same range in the new content (start byte is identical; end shifts by
+	// the difference between newText and oldText lengths).
+	newStartByte := oldStartByte
+	newEndByte := oldEndByte + (newLen - oldLen)
 
-	for _, d := range diffs {
-		lineCount := strings.Count(d.Text, "\n")
-		if d.Type == diffmatchpatch.DiffEqual {
-			// If we have an active region, end it
-			if currentRegion != nil {
-				currentRegion.oldEnd = oldLineNum - 1
-				currentRegion.newEnd = newLineNum - 1
-				regions = append(regions, *currentRegion)
-				currentRegion = nil
-			}
-			oldLineNum += lineCount + 1
-			newLineNum += lineCount + 1
-		} else {
-			// Start or continue a change region
-			if currentRegion == nil {
-				currentRegion = &changeRegion{
-					oldStart: oldLineNum,
-					newStart: newLineNum,
-				}
-			}
+	// 1-indexed line numbers of the changed range.
+	oldStartLine := strings.Count(oldContent[:oldStartByte], "\n") + 1
+	newStartLine := strings.Count(newContent[:newStartByte], "\n") + 1
 
-			if d.Type == diffmatchpatch.DiffDelete {
-				currentRegion.hasOld = true
-				oldLineNum += lineCount + 1
-				currentRegion.oldEnd = oldLineNum - 1
-			} else if d.Type == diffmatchpatch.DiffInsert {
-				currentRegion.hasNew = true
-				newLineNum += lineCount + 1
-				currentRegion.newEnd = newLineNum - 1
-			}
-		}
+	oldChangedCount := strings.Count(oldContent[oldStartByte:oldEndByte], "\n") + 1
+	newChangedCount := strings.Count(newContent[newStartByte:newEndByte], "\n") + 1
+
+	oldEndLine := oldStartLine + oldChangedCount - 1
+	newEndLine := newStartLine + newChangedCount - 1
+
+	// Surround with up to contextLines on either side.
+	ctxOldStart := max(oldStartLine-contextLines, 1)
+	ctxOldEnd := min(oldEndLine+contextLines, len(oldLines))
+	ctxNewStart := max(newStartLine-contextLines, 1)
+	ctxNewEnd := min(newEndLine+contextLines, len(newLines))
+
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "--- a/%s\n+++ b/%s\n", path, path)
+	fmt.Fprintf(&buf, "@@ -%s +%s @@\n",
+		formatRange(ctxOldStart, ctxOldEnd),
+		formatRange(ctxNewStart, ctxNewEnd))
+
+	// Leading context.
+	for j := ctxOldStart; j < oldStartLine && j <= len(oldLines); j++ {
+		fmt.Fprintf(&buf, " %s\n", oldLines[j-1])
+	}
+	// Deleted lines.
+	for j := oldStartLine; j <= oldEndLine && j <= len(oldLines); j++ {
+		fmt.Fprintf(&buf, "-%s\n", oldLines[j-1])
+	}
+	// Added lines.
+	for j := newStartLine; j <= newEndLine && j <= len(newLines); j++ {
+		fmt.Fprintf(&buf, "+%s\n", newLines[j-1])
+	}
+	// Trailing context.
+	for j := oldEndLine + 1; j <= ctxOldEnd && j <= len(oldLines); j++ {
+		fmt.Fprintf(&buf, " %s\n", oldLines[j-1])
 	}
 
-	// Don't forget the last region
-	if currentRegion != nil {
-		if !currentRegion.hasOld {
-			currentRegion.oldEnd = oldLineNum - 1
-		}
-		if !currentRegion.hasNew {
-			currentRegion.newEnd = newLineNum - 1
-		}
-		regions = append(regions, *currentRegion)
-	}
-
-	// Merge overlapping or adjacent hunks
-	const contextLines = 3
-	type hunk struct {
-		ctxOldStart, ctxOldEnd int // context range in old file
-		ctxNewStart, ctxNewEnd int // context range in new file
-		regions                []changeRegion
-	}
-
-	var hunks []hunk
-	var currentHunk *hunk
-
-	for _, r := range regions {
-		// Calculate context range for this region
-		ctxOldStart := r.oldStart - contextLines
-		if ctxOldStart < 1 {
-			ctxOldStart = 1
-		}
-		ctxOldEnd := r.oldEnd + contextLines
-		if ctxOldEnd > len(oldLines) {
-			ctxOldEnd = len(oldLines)
-		}
-
-		// Calculate new context range
-		ctxNewStart := r.newStart - contextLines
-		if ctxNewStart < 1 {
-			ctxNewStart = 1
-		}
-		ctxNewEnd := r.newEnd + contextLines
-		if ctxNewEnd > len(newLines) {
-			ctxNewEnd = len(newLines)
-		}
-
-		// Check if this region should merge with current hunk
-		shouldMerge := false
-		if currentHunk != nil {
-			// Merge if context ranges overlap or are adjacent (gap of 0 or 1 line)
-			if ctxOldStart <= currentHunk.ctxOldEnd+1 {
-				shouldMerge = true
-			}
-		}
-
-		if shouldMerge {
-			// Extend current hunk
-			if ctxOldStart < currentHunk.ctxOldStart {
-				currentHunk.ctxOldStart = ctxOldStart
-			}
-			if ctxOldEnd > currentHunk.ctxOldEnd {
-				currentHunk.ctxOldEnd = ctxOldEnd
-			}
-			if ctxNewStart < currentHunk.ctxNewStart {
-				currentHunk.ctxNewStart = ctxNewStart
-			}
-			if ctxNewEnd > currentHunk.ctxNewEnd {
-				currentHunk.ctxNewEnd = ctxNewEnd
-			}
-			currentHunk.regions = append(currentHunk.regions, r)
-		} else {
-			// Start new hunk
-			currentHunk = &hunk{
-				ctxOldStart:  ctxOldStart,
-				ctxOldEnd:    ctxOldEnd,
-				ctxNewStart:  ctxNewStart,
-				ctxNewEnd:    ctxNewEnd,
-				regions:      []changeRegion{r},
-			}
-			hunks = append(hunks, *currentHunk)
-		}
-	}
-
-	// Output merged hunks
-	for i, h := range hunks {
-		if i > 0 {
-			buf.WriteString("\n")
-		}
-
-		// Build hunk header with merged context range
-		oldRange := formatRange(h.ctxOldStart, h.ctxOldEnd)
-		newRange := formatRange(h.ctxNewStart, h.ctxNewEnd)
-		buf.WriteString(fmt.Sprintf("@@ -%s +%s @@\n", oldRange, newRange))
-
-		// Track what we've output to avoid duplicates
-		outputOldLine := h.ctxOldStart
-		outputNewLine := h.ctxNewStart
-
-		for _, r := range h.regions {
-			// Output context lines before this region's changes
-			for j := outputOldLine; j < r.oldStart && j <= len(oldLines); j++ {
-				buf.WriteString(fmt.Sprintf(" %s\n", oldLines[j-1]))
-				outputOldLine++
-				outputNewLine++
-			}
-
-			// Output deleted lines
-			for j := r.oldStart; j <= r.oldEnd && j <= len(oldLines); j++ {
-				buf.WriteString(fmt.Sprintf("-%s\n", oldLines[j-1]))
-				outputOldLine++
-			}
-
-			// Output added lines
-			for j := r.newStart; j <= r.newEnd && j <= len(newLines); j++ {
-				buf.WriteString(fmt.Sprintf("+%s\n", newLines[j-1]))
-				outputNewLine++
-			}
-		}
-
-		// Output remaining context lines after the last change
-		for j := outputOldLine; j <= h.ctxOldEnd && j <= len(oldLines); j++ {
-			buf.WriteString(fmt.Sprintf(" %s\n", oldLines[j-1]))
-		}
-	}
-
-	// Add file headers
-	header := fmt.Sprintf("--- a/%s\n+++ b/%s\n", path, path)
-	return header + buf.String()
+	return buf.String()
 }
 
-// formatRange formats a line range for hunk headers.
+// formatRange formats a line range for hunk headers as "start,count".
 func formatRange(start, end int) string {
-	if start == end {
+	count := end - start + 1
+	if count == 1 {
 		return fmt.Sprintf("%d", start)
 	}
-	return fmt.Sprintf("%d,%d", start, end-start+1)
+	return fmt.Sprintf("%d,%d", start, count)
 }
