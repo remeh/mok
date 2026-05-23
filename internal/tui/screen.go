@@ -189,3 +189,8 @@ func (s *Screen) GetMessageView() *MessageView {
 func (s *Screen) GetContentHeight() int {
 	return s.msgView.height
 }
+
+// GetTheme returns the current theme for use in external rendering.
+func (s *Screen) GetTheme() Theme {
+	return s.theme
+}

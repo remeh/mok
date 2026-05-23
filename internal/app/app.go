@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 	"github.com/user/mok/internal/agent"
 	"github.com/user/mok/internal/llm"
 	"github.com/user/mok/internal/tools"
@@ -49,6 +52,7 @@ type AppModel struct {
 	height         int
 	editorTempFile string // path to temp file used by Ctrl-G editor
 	quitting       bool
+	quitWithCtrlC  bool // track if quit was via Ctrl-C
 
 	// Agent event handling
 	agentRunning  bool
@@ -185,15 +189,15 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.agentRunning {
 				m.abortAgent()
 			}
-			// Render session summary to stdout before quitting
-			m.renderQuitSummary()
+			// Mark that we're quitting via Ctrl-C
+			m.quitWithCtrlC = true
+			m.quitting = true
 			if m.Debug != nil {
 				m.Debug.Close()
 			}
 			if m.UILogWriter != nil {
 				m.UILogWriter.Close()
 			}
-			m.quitting = true
 			return m, tea.Quit
 
 		case tea.KeyEsc:
@@ -544,12 +548,23 @@ func (m *AppModel) renderQuitSummary() {
 		return
 	}
 
-	// Header
-	fmt.Println(strings.Repeat("=", 80))
-	fmt.Println("MOK SESSION SUMMARY")
-	fmt.Printf("Model: %s | Endpoint: %s\n", m.Config.Model, m.Config.Endpoint)
-	fmt.Println(strings.Repeat("=", 80))
+	// Header with styling
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	subHeaderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+
+	fmt.Println(separatorStyle.Render(strings.Repeat("─", 80)))
+	fmt.Println(headerStyle.Render("  MOK SESSION SUMMARY"))
+	fmt.Println(subHeaderStyle.Render(fmt.Sprintf("  Model: %s | Endpoint: %s", m.Config.Model, m.Config.Endpoint)))
+	fmt.Println(separatorStyle.Render(strings.Repeat("─", 80)))
 	fmt.Println()
+
+	// Create markdown renderer for assistant messages
+	mdRenderer, err := newMarkdownRenderer()
+	if err != nil {
+		// If markdown rendering fails, fall back to plain text
+		mdRenderer = nil
+	}
 
 	for _, msg := range m.Messages {
 		// Skip turn stats in the main output (they're metadata)
@@ -559,49 +574,67 @@ func (m *AppModel) renderQuitSummary() {
 
 		// Timestamp for user and system messages
 		if (msg.Type == types.MsgUser || msg.Type == types.MsgSystem) && !msg.Timestamp.IsZero() {
-			fmt.Printf("[%s]\n", msg.Timestamp.Format("15:04:05"))
+			timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Italic(true)
+			fmt.Println(timestampStyle.Render(fmt.Sprintf("  [%s]", msg.Timestamp.Format("15:04:05"))))
 		}
 
 		switch msg.Type {
 		case types.MsgUser:
-			fmt.Printf("> %s\n", msg.Content)
+			userStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Bold(true)
+			fmt.Println(userStyle.Render(fmt.Sprintf("  > %s", msg.Content)))
 			fmt.Println()
 
 		case types.MsgAssistant:
 			if msg.ThinkingText != "" {
-				fmt.Println("[thinking] (collapsed)")
+				thinkingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Italic(true)
+				fmt.Println(thinkingStyle.Render("  [thinking] (collapsed)"))
 			}
 			if msg.Content != "" {
-				// Plain text output (no markdown rendering for stdout)
-				fmt.Println(msg.Content)
+				// Render markdown for assistant messages
+				content := msg.Content
+				if mdRenderer != nil {
+					if rendered, err := mdRenderer.Render(content); err == nil {
+						content = rendered
+					}
+				}
+				// Trim trailing newline from glamour output
+				content = strings.TrimSuffix(content, "\n")
+				fmt.Println("  " + content)
 			}
 			fmt.Println()
 
 		case types.MsgSystem:
-			fmt.Printf("[system] %s\n", msg.Content)
+			systemStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("103")).Italic(true)
+			fmt.Println(systemStyle.Render(fmt.Sprintf("  [system] %s", msg.Content)))
 			fmt.Println()
 
 		case types.MsgToolCall:
-			fmt.Printf("[%s] %s\n", msg.ToolName, truncateForOutput(msg.ToolArgs, 200))
+			toolCallStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true)
+			fmt.Println(toolCallStyle.Render(fmt.Sprintf("  [%s] %s", msg.ToolName, truncateForOutput(msg.ToolArgs, 200))))
 			fmt.Println()
 
 		case types.MsgToolResult:
 			// Always show collapsed summary
 			if msg.Summary != "" {
 				status := "✓"
+				statusColor := "34" // green
 				if msg.IsError {
 					status = "✗"
+					statusColor = "196" // red
 				}
-				fmt.Printf("[%s] %s %s\n", msg.ToolName, status, msg.Summary)
+				statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Bold(true)
+				toolResultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
+				fmt.Println(toolResultStyle.Render(fmt.Sprintf("  [%s] %s %s", msg.ToolName, statusStyle.Render(status), msg.Summary)))
 			}
 			fmt.Println()
 		}
 	}
 
 	// Footer with final stats
-	fmt.Println(strings.Repeat("=", 80))
-	fmt.Println("END OF SESSION")
-	fmt.Println(strings.Repeat("=", 80))
+	fmt.Println(separatorStyle.Render(strings.Repeat("─", 80)))
+	endStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("243"))
+	fmt.Println(endStyle.Render("  END OF SESSION"))
+	fmt.Println(separatorStyle.Render(strings.Repeat("─", 80)))
 }
 
 // truncateForOutput truncates long strings for stdout display.
@@ -611,6 +644,25 @@ func truncateForOutput(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// getTerminalWidth returns the terminal width or a sensible default.
+func getTerminalWidth() int {
+	// Try to get terminal width from stdout
+	if width, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && width > 0 {
+		return width
+	}
+	// Fallback to default width (glamour's default is around 80)
+	return 80
+}
+
+// newMarkdownRenderer creates a glamour markdown renderer for stdout output.
+func newMarkdownRenderer() (*glamour.TermRenderer, error) {
+	width := getTerminalWidth()
+	return glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width-4), // Leave some margin
+	)
 }
 
 // openEditor creates a temp file with the current input, launches $EDITOR
@@ -692,15 +744,15 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 
 	switch cmd {
 	case "exit", "quit":
-		// Render session summary to stdout before quitting
-		m.renderQuitSummary()
+		// Mark that we're quitting (summary will be rendered after tea.Quit)
+		m.quitWithCtrlC = true // reuse the flag for any quit
+		m.quitting = true
 		if m.Debug != nil {
 			m.Debug.Close()
 		}
 		if m.UILogWriter != nil {
 			m.UILogWriter.Close()
 		}
-		m.quitting = true
 		return tea.Quit, true
 
 	case "clear":
@@ -738,8 +790,6 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 		m.Screen.GetMessageView().MessageGrew()
 		return nil, true
 	}
-
-	return nil, false
 }
 
 // handleModelCommand initiates model selection by fetching available models.
@@ -1031,6 +1081,11 @@ func Run(cfg *Config) error {
 
 	if _, err := p.Run(); err != nil {
 		return err
+	}
+
+	// Render session summary after exit if quit via Ctrl-C
+	if model.quitWithCtrlC {
+		model.renderQuitSummary()
 	}
 
 	return nil
