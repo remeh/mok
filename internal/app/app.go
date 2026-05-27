@@ -394,6 +394,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case tea.ResumeMsg:
+		// Bubble Tea v1.3.10's RestoreTerminal does not re-enable mouse mode
+		// after ReleaseTerminal disabled it (see suspend/exec). Re-enable so
+		// scroll wheel and click-to-expand keep working after Ctrl-Z.
+		return m, tea.EnableMouseAllMotion
+
 	case agentEvent:
 		m.handleAgentEvent(msg.Event)
 		// Keep polling for more events until the turn is done
@@ -751,15 +757,15 @@ func (m *AppModel) openEditor() tea.Cmd {
 			m.editorTempFile = ""
 		}()
 
-		if err != nil {
-			return nil
+		if err == nil {
+			if content, readErr := os.ReadFile(tmp.Name()); readErr == nil {
+				m.Screen.GetInputArea().SetValue(string(content))
+			}
 		}
 
-		content, readErr := os.ReadFile(tmp.Name())
-		if readErr == nil {
-			m.Screen.GetInputArea().SetValue(string(content))
-		}
-		return nil
+		// Re-enable mouse mode: Bubble Tea's RestoreTerminal does not do it,
+		// and the editor (vi/nvim) may also leave mouse reporting disabled.
+		return tea.EnableMouseAllMotion()
 	})
 }
 
