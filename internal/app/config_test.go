@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,17 +77,17 @@ max_tokens: 4096
 
 func TestLoadConfigEnvVars(t *testing.T) {
 	// Set env vars
-	os.Setenv("MMOK_MODEL", "env-model")
-	os.Setenv("MMOK_ENDPOINT", "http://env-host:9999/v1")
-	os.Setenv("MMOK_MAX_CONTEXT_TOKENS", "32768")
-	os.Setenv("MMOK_KEEP_RECENT_TOKENS", "4096")
-	os.Setenv("MMOK_MAX_TOKENS", "2048")
+	os.Setenv("MOK_MODEL", "env-model")
+	os.Setenv("MOK_ENDPOINT", "http://env-host:9999/v1")
+	os.Setenv("MOK_MAX_CONTEXT_TOKENS", "32768")
+	os.Setenv("MOK_KEEP_RECENT_TOKENS", "4096")
+	os.Setenv("MOK_MAX_TOKENS", "2048")
 	t.Cleanup(func() {
-		os.Unsetenv("MMOK_MODEL")
-		os.Unsetenv("MMOK_ENDPOINT")
-		os.Unsetenv("MMOK_MAX_CONTEXT_TOKENS")
-		os.Unsetenv("MMOK_KEEP_RECENT_TOKENS")
-		os.Unsetenv("MMOK_MAX_TOKENS")
+		os.Unsetenv("MOK_MODEL")
+		os.Unsetenv("MOK_ENDPOINT")
+		os.Unsetenv("MOK_MAX_CONTEXT_TOKENS")
+		os.Unsetenv("MOK_KEEP_RECENT_TOKENS")
+		os.Unsetenv("MOK_MAX_TOKENS")
 	})
 
 	tmpDir := t.TempDir()
@@ -117,8 +118,8 @@ func TestLoadConfigEnvVars(t *testing.T) {
 }
 
 func TestLoadConfigFlagsOverride(t *testing.T) {
-	os.Setenv("MMOK_MODEL", "env-model")
-	t.Cleanup(func() { os.Unsetenv("MMOK_MODEL") })
+	os.Setenv("MOK_MODEL", "env-model")
+	t.Cleanup(func() { os.Unsetenv("MOK_MODEL") })
 
 	tmpDir := t.TempDir()
 	origDir, _ := os.Getwd()
@@ -150,11 +151,11 @@ func TestLoadConfigPrecedence(t *testing.T) {
 	os.WriteFile(yamlPath, []byte("model: \"file-model\"\nendpoint: \"http://file:1111/v1\"\n"), 0644)
 
 	// Set env with model="env-model"
-	os.Setenv("MMOK_MODEL", "env-model")
-	os.Setenv("MMOK_ENDPOINT", "http://env:2222/v1")
+	os.Setenv("MOK_MODEL", "env-model")
+	os.Setenv("MOK_ENDPOINT", "http://env:2222/v1")
 	t.Cleanup(func() {
-		os.Unsetenv("MMOK_MODEL")
-		os.Unsetenv("MMOK_ENDPOINT")
+		os.Unsetenv("MOK_MODEL")
+		os.Unsetenv("MOK_ENDPOINT")
 	})
 
 	origDir, _ := os.Getwd()
@@ -182,6 +183,32 @@ func TestLoadConfigPrecedence(t *testing.T) {
 }
 
 func TestLoadConfigNoFile(t *testing.T) {
+	// Unset any pre-existing MOK_* env vars to ensure a clean test
+	existing := make(map[string]string)
+	for _, e := range os.Environ() {
+		kv := strings.SplitN(e, "=", 2)
+		if strings.HasPrefix(kv[0], "MOK_") {
+			existing[kv[0]] = kv[1]
+			os.Unsetenv(kv[0])
+		}
+	}
+	t.Cleanup(func() {
+		for k, v := range existing {
+			os.Setenv(k, v)
+		}
+	})
+
+	// Temporarily move home config out of the way so loadFromFile finds nothing
+	home, err := os.UserHomeDir()
+	if err == nil {
+		homeCfg := filepath.Join(home, ".config", "mok", "config.yaml")
+		if _, statErr := os.Stat(homeCfg); statErr == nil {
+			backupPath := homeCfg + ".bak_test"
+			os.Rename(homeCfg, backupPath)
+			t.Cleanup(func() { os.Rename(backupPath, homeCfg) })
+		}
+	}
+
 	tmpDir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(tmpDir)
@@ -255,11 +282,11 @@ func TestApplyFlagsEmptyStrings(t *testing.T) {
 }
 
 func TestLoadFromEnvInvalidValues(t *testing.T) {
-	os.Setenv("MMOK_MAX_CONTEXT_TOKENS", "not-a-number")
-	os.Setenv("MMOK_MAX_TOKENS", "not-a-number")
+	os.Setenv("MOK_MAX_CONTEXT_TOKENS", "not-a-number")
+	os.Setenv("MOK_MAX_TOKENS", "not-a-number")
 	t.Cleanup(func() {
-		os.Unsetenv("MMOK_MAX_CONTEXT_TOKENS")
-		os.Unsetenv("MMOK_MAX_TOKENS")
+		os.Unsetenv("MOK_MAX_CONTEXT_TOKENS")
+		os.Unsetenv("MOK_MAX_TOKENS")
 	})
 
 	cfg := DefaultConfig()
