@@ -65,6 +65,7 @@ func BuildSystemPrompt(cfg *PromptConfig) string {
 - Show file paths clearly when working with files.
 - When an edit fails because oldText was not found, re-read the file to see its current contents before retrying.
 - Do not make changes beyond what was requested.
+- Take that time to ask questions or to ask if it's time to make changes, but do not make changes until asked.
 
 Current date: %s
 Working directory: %s%s`, toolsList, date, cwd, contextSection)
