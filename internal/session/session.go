@@ -144,7 +144,8 @@ func (s *Session) ToAppMessages() []*types.Message {
 // ToLLMMessages converts session messages to LLM Message format for
 // restoring the agent's conversation history.
 // System messages (turn stats, compaction notices, etc.) are skipped.
-// Tool call messages are merged into the preceding assistant message.
+// Tool call messages are merged into the preceding assistant message,
+// and tool results are paired with them in order so their IDs match.
 func (s *Session) ToLLMMessages() []llm.Message {
 	var result []llm.Message
 	tcCounter := 0 // synthetic tool call ID counter
@@ -165,9 +166,10 @@ func (s *Session) ToLLMMessages() []llm.Message {
 				Content: msg.Content,
 			}
 
-			// Look ahead for tool calls belonging to this assistant message
+			// Collect tool calls that belong to this assistant turn.
 			j := i + 1
 			var toolCalls []llm.APIToolCall
+			var toolCallIDs []string
 			for j < len(s.Messages) && s.Messages[j].Type == types.MsgToolCall {
 				tc := &s.Messages[j]
 				id := fmt.Sprintf("sess-tc-%d", tcCounter)
@@ -184,27 +186,33 @@ func (s *Session) ToLLMMessages() []llm.Message {
 						Arguments: tc.ToolArgs,
 					},
 				})
-
-				// Skip the corresponding tool result (if present) to assign matching ID
-				k := j + 1
-				for k < len(s.Messages) && s.Messages[k].Type == types.MsgToolResult {
-					// Assign synthetic ID to this tool result
-					s.Messages[k].ID = id // reuse the ID for matching
-					k++
-				}
+				toolCallIDs = append(toolCallIDs, id)
 				j++
 			}
 
 			if len(toolCalls) > 0 {
 				assistant.ToolCalls = toolCalls
 			}
-
 			result = append(result, assistant)
-			i = j - 1 // advance past tool calls and results
+
+			// Pair the following tool results with the tool calls above,
+			// in order, so their IDs match.
+			for k := 0; k < len(toolCallIDs) && j < len(s.Messages) && s.Messages[j].Type == types.MsgToolResult; k++ {
+				tr := &s.Messages[j]
+				result = append(result, llm.Message{
+					Role:       "tool",
+					Content:    tr.Content,
+					ToolCallID: toolCallIDs[k],
+					Name:       tr.ToolName,
+				})
+				j++
+			}
+
+			i = j - 1 // advance past tool calls and paired results
 
 		case types.MsgToolResult:
-			// This tool result was not consumed by an assistant message above.
-			// Generate a synthetic ID.
+			// Orphan tool result with no preceding assistant tool call.
+			// Generate a synthetic ID so the message is at least well-formed.
 			id := fmt.Sprintf("sess-tc-%d", tcCounter)
 			tcCounter++
 

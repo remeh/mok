@@ -224,6 +224,50 @@ func TestToLLMMessages_ToolCalls(t *testing.T) {
 	if llmMsgs[2].Content != "file content" {
 		t.Errorf("tool result content = %q, want %q", llmMsgs[2].Content, "file content")
 	}
+
+	// The tool result's tool_call_id MUST match the assistant's tool call id,
+	// otherwise the LLM API will reject the resumed conversation.
+	if llmMsgs[2].ToolCallID != llmMsgs[1].ToolCalls[0].ID {
+		t.Errorf("tool_call_id mismatch: result=%q, call=%q",
+			llmMsgs[2].ToolCallID, llmMsgs[1].ToolCalls[0].ID)
+	}
+}
+
+func TestToLLMMessages_ParallelToolCalls(t *testing.T) {
+	sess := NewSession(NewSessionInput{Model: "test"})
+
+	sess.AddMessage(types.NewMessage(types.MsgUser, "do two things"))
+	sess.AddMessage(types.NewMessage(types.MsgAssistant, ""))
+	sess.AddMessage(types.NewToolCall("read", `{"path":"a.txt"}`))
+	sess.AddMessage(types.NewToolCall("read", `{"path":"b.txt"}`))
+	sess.AddMessage(types.NewToolResult("read", "content a", false))
+	sess.AddMessage(types.NewToolResult("read", "content b", false))
+
+	llmMsgs := sess.ToLLMMessages()
+
+	// user, assistant (2 tool_calls), 2 tool results
+	if len(llmMsgs) != 4 {
+		t.Fatalf("llm messages length = %d, want 4", len(llmMsgs))
+	}
+	if len(llmMsgs[1].ToolCalls) != 2 {
+		t.Fatalf("assistant tool calls = %d, want 2", len(llmMsgs[1].ToolCalls))
+	}
+
+	// Each tool result must reference the tool call at the same index.
+	if llmMsgs[2].ToolCallID != llmMsgs[1].ToolCalls[0].ID {
+		t.Errorf("first tool_call_id mismatch: result=%q, call=%q",
+			llmMsgs[2].ToolCallID, llmMsgs[1].ToolCalls[0].ID)
+	}
+	if llmMsgs[3].ToolCallID != llmMsgs[1].ToolCalls[1].ID {
+		t.Errorf("second tool_call_id mismatch: result=%q, call=%q",
+			llmMsgs[3].ToolCallID, llmMsgs[1].ToolCalls[1].ID)
+	}
+	if llmMsgs[2].Content != "content a" {
+		t.Errorf("first result content = %q, want %q", llmMsgs[2].Content, "content a")
+	}
+	if llmMsgs[3].Content != "content b" {
+		t.Errorf("second result content = %q, want %q", llmMsgs[3].Content, "content b")
+	}
 }
 
 func TestToSessionMessage_RoundTrip(t *testing.T) {
