@@ -58,6 +58,11 @@ func (s *StatusBar) SetTokenCount(count int) {
 	s.tokenCount = count
 }
 
+// TokenCount returns the current token count.
+func (s *StatusBar) TokenCount() int {
+	return s.tokenCount
+}
+
 // SetMaxTokens sets the max context tokens.
 func (s *StatusBar) SetMaxTokens(max int) {
 	if max > 0 {

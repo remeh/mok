@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/term"
 	"github.com/user/mok/internal/agent"
 	"github.com/user/mok/internal/llm"
+	"github.com/user/mok/internal/session"
 	"github.com/user/mok/internal/tools"
 	"github.com/user/mok/internal/tui"
 	"github.com/user/mok/internal/types"
@@ -62,10 +64,16 @@ type AppModel struct {
 
 	// Model selection
 	modelSelector *modelSelectorState
+
+	// Session management
+	Session            *session.Session
+	sessionPath        string // Path to session file (empty if new session)
+	hasUserActivity    bool   // Track if user has sent any prompts
+	lastSavedSession   string // Path of last saved session (for post-quit message)
 }
 
-// NewAppModel creates a new AppModel with the given config.
-func NewAppModel(cfg *Config) (*AppModel, error) {
+// NewAppModel creates a new AppModel with the given config and optional session path.
+func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 	theme := tui.DefaultTheme()
 	screen := tui.NewScreen(theme)
 
@@ -156,7 +164,7 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		}
 	}
 
-	return &AppModel{
+	model := &AppModel{
 		Config:      cfg,
 		Screen:      screen,
 		Agent:       agt,
@@ -164,7 +172,50 @@ func NewAppModel(cfg *Config) (*AppModel, error) {
 		UILogWriter: uiLogWriter,
 		Messages:    make([]*types.Message, 0),
 		eventChan:   make(chan agentEvent, 128),
-	}, nil
+		sessionPath: sessionPath,
+	}
+
+	// If restoring session, load it
+	if sessionPath != "" {
+		sess, err := session.LoadSession(sessionPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading session: %w", err)
+		}
+
+		model.Session = sess
+		model.Messages = sess.ToAppMessages()
+		model.hasUserActivity = sess.HasUserActivity
+
+		// Restore token count
+		if sess.TokenCount > 0 {
+			screen.SetTokenCount(sess.TokenCount)
+		}
+
+		// Restore agent's message history from session
+		llmMessages := sess.ToLLMMessages()
+		for _, msg := range llmMessages {
+			model.Agent.AddMessage(msg)
+		}
+
+		if debug != nil {
+			debug.Info("SESSION", "Restored session with %d messages, %d LLM messages",
+				len(sess.Messages), len(llmMessages))
+		}
+	} else {
+		// Initialize new session
+		model.Session = session.NewSession(session.NewSessionInput{
+			Model:               cfg.Model,
+			Endpoint:            cfg.Endpoint,
+			CWD:                 cfg.CWD,
+			MaxContextTokens:    cfg.MaxContextTokens,
+			CompactionThreshold: cfg.CompactionThreshold,
+			KeepRecentTokens:    cfg.KeepRecentTokens,
+			MaxTokens:           cfg.MaxTokens,
+			SummarizationModel:  cfg.SummarizationModel,
+		})
+	}
+
+	return model, nil
 }
 
 // Init implements tea.Model.
@@ -192,6 +243,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Mark that we're quitting via Ctrl-C
 			m.quitWithCtrlC = true
 			m.quitting = true
+
+			// Save session if user has been active
+			if m.hasUserActivity && m.Session != nil {
+				if err := m.saveSession(); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save session: %v\n", err)
+				}
+			}
+
 			if m.Debug != nil {
 				m.Debug.Close()
 			}
@@ -544,7 +603,6 @@ func (m *AppModel) expandAllToolResults() {
 // This is called when quitting to allow users to scroll back and review the session.
 func (m *AppModel) renderQuitSummary() {
 	if len(m.Messages) == 0 {
-		fmt.Println("No conversation history.")
 		return
 	}
 
@@ -747,6 +805,14 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 		// Mark that we're quitting (summary will be rendered after tea.Quit)
 		m.quitWithCtrlC = true // reuse the flag for any quit
 		m.quitting = true
+
+		// Save session if user has been active
+		if m.hasUserActivity && m.Session != nil {
+			if err := m.saveSession(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to save session: %v\n", err)
+			}
+		}
+
 		if m.Debug != nil {
 			m.Debug.Close()
 		}
@@ -949,11 +1015,24 @@ func (m *AppModel) selectModel(modelID string) {
 	// Update config with new model
 	m.Config.Model = modelID
 
+	// Update session metadata so the model is restored correctly
+	if m.Session != nil {
+		m.Session.Metadata.Model = modelID
+	}
+
 	// Recreate the agent with the new model
 	m.recreateAgent()
 
 	// Restore conversation history
 	m.Messages = conversationHistory
+
+	// Restore agent message history after recreation
+	if m.Session != nil {
+		llmMessages := m.Session.ToLLMMessages()
+		for _, msg := range llmMessages {
+			m.Agent.AddMessage(msg)
+		}
+	}
 
 	// Update screen with new model
 	m.Screen.SetModel(modelID)
@@ -1010,6 +1089,9 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 		return nil
 	}
 
+	// Mark user activity for session saving
+	m.hasUserActivity = true
+
 	userMsg := types.NewMessage(types.MsgUser, text)
 	m.Messages = append(m.Messages, userMsg)
 
@@ -1065,10 +1147,57 @@ func formatTurnStats(endTime time.Time, duration time.Duration, usage *llm.Usage
 	return strings.Join(parts, " · ")
 }
 
+// saveSession saves the current session state to disk.
+// If the session was restored from an existing file, it overwrites that file.
+// Otherwise, it creates a new file in ~/.mok/sessions/.
+func (m *AppModel) saveSession() error {
+	if m.Session == nil {
+		return nil
+	}
+
+	// Update session metadata
+	m.Session.Metadata.UpdatedAt = time.Now()
+	m.Session.TokenCount = m.Screen.TokenCount()
+	m.Session.HasUserActivity = m.hasUserActivity
+
+	// Convert current messages to session format
+	sessionMessages := make([]session.SessionMessage, len(m.Messages))
+	for i, msg := range m.Messages {
+		sessionMessages[i] = session.ToSessionMessage(msg)
+	}
+	m.Session.Messages = sessionMessages
+
+	// Determine save path: if restoring, overwrite the original file;
+	// otherwise create a new file in the session directory.
+	var savePath string
+	if m.sessionPath != "" {
+		// Restoring an existing session: overwrite it
+		savePath = m.sessionPath
+	} else {
+		// New session: create in ~/.mok/sessions/
+		if err := session.EnsureSessionDir(); err != nil {
+			return err
+		}
+
+		dir, _ := session.GetSessionDir()
+		filename := session.GenerateSessionFilename()
+		savePath = filepath.Join(dir, filename)
+		m.sessionPath = savePath
+	}
+
+	if err := m.Session.Save(savePath); err != nil {
+		return err
+	}
+
+	// Store the path for post-quit message
+	m.lastSavedSession = savePath
+
+	return nil
+}
 
 // Run starts the bubbletea program.
-func Run(cfg *Config) error {
-	model, err := NewAppModel(cfg)
+func Run(cfg *Config, sessionPath string) error {
+	model, err := NewAppModel(cfg, sessionPath)
 	if err != nil {
 		return err
 	}
@@ -1086,6 +1215,11 @@ func Run(cfg *Config) error {
 	// Render session summary after exit if quit via Ctrl-C
 	if model.quitWithCtrlC {
 		model.renderQuitSummary()
+	}
+
+	// Print session restore instruction if a session was saved
+	if model.lastSavedSession != "" {
+		fmt.Fprintf(os.Stderr, "\nSession saved to %s\nType 'mok -session %s' to restore the session\n", model.lastSavedSession, model.lastSavedSession)
 	}
 
 	return nil

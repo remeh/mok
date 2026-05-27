@@ -74,6 +74,9 @@ internal/tui/
   model_selector.go         — Interactive model selection from API
 internal/types/
   message.go                — Message type, tool call/result constructors
+internal/session/
+  session.go                — Session data structures, serialization, conversion (app↔LLM)
+  storage.go                — Session file management (~/.mok/sessions/)
 ```
 
 ## Dependencies
@@ -109,7 +112,7 @@ Precedence: defaults → YAML file → env vars → CLI flags.
 
 **Env vars**: `MOK_MODEL`, `MOK_ENDPOINT`, `MOK_BEARER_TOKEN`, `MOK_SYSTEM_PROMPT`, `MOK_MAX_CONTEXT_TOKENS`, `MOK_COMPACTION_THRESHOLD`, `MOK_KEEP_RECENT_TOKENS`, `MOK_MAX_TOKENS`, `MOK_DEBUG`, `MOK_UI_LOG_PATH`, `MOK_ENABLE_MULTILINE`, `MOK_ENABLE_AUTOCOMPLETE`, `MOK_AUTOCOMPLETE_MAX_ITEMS`, `MOK_TAB_COMPLETES`.
 
-**CLI flags**: `-model`, `-endpoint`, `-bearer-token`, `-system-prompt`, `-max-context-tokens`, `-max-tokens`, `-debug`, `-p` (prompt), `-t` (timeout), `-version`, `-ui-log-path`.
+**CLI flags**: `-model`, `-endpoint`, `-bearer-token`, `-system-prompt`, `-max-context-tokens`, `-max-tokens`, `-debug`, `-p` (prompt), `-t` (timeout), `-version`, `-ui-log-path`, `-session` (restore session).
 
 **File locations**: `./mok.yaml`, `./config.yaml`, `~/.config/mok/config.yaml`.
 
@@ -238,8 +241,19 @@ When `-system-prompt` is provided, it overrides the default coding assistant pro
 - Plain text output (no ANSI codes) for easy redirection
 - Accessible via both interactive quit commands and Ctrl+C
 
+**Session restoration**:
+- Automatic session saving when quitting after user activity
+- Session files stored in `~/.mok/sessions/` as JSON (e.g., `session_20240115_143022.json`)
+- Restore with `-session <path>` flag
+- Restores full conversation history, model/endpoint config, token count, agent LLM history
+- CLI flags take precedence over restored session config
+- No session file created if user quits without sending any prompts
+- Restore instruction printed to stderr on quit
+
 ### Not Yet Implemented
 
-- No conversation history persistence across sessions (in-memory only)
+- Session listing/selection UI (`/sessions` command)
+- Manual session save (`/save` command)
+- Session naming/categorization
 - MCP (Model Context Protocol) support for external tool providers
 - File attachment / context file support

@@ -13,6 +13,7 @@ import (
 	"github.com/user/mok/internal/agent"
 	"github.com/user/mok/internal/app"
 	"github.com/user/mok/internal/llm"
+	"github.com/user/mok/internal/session"
 	"github.com/user/mok/internal/tools"
 )
 
@@ -34,6 +35,7 @@ func main() {
 	maxTokens := flag.Int("max-tokens", 0, "Max response tokens")
 	debug := flag.Bool("debug", false, "Enable debug logging to stderr")
 	uiLogPath := flag.String("ui-log-path", "", "Path for UI session log (requires -debug flag)")
+	sessionPath := flag.String("session", "", "Path to session file to restore")
 
 	flag.Parse()
 
@@ -67,7 +69,50 @@ func main() {
 		return
 	}
 
-	if err := app.Run(cfg); err != nil {
+	// Handle session restore (TUI mode only)
+	if *sessionPath != "" {
+		// Validate session file exists
+		if _, err := os.Stat(*sessionPath); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Error: session file not found: %s\n", *sessionPath)
+			os.Exit(1)
+		}
+
+		// Load session to extract config
+		sess, err := session.LoadSession(*sessionPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to load session: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Merge session config with CLI flags (CLI flags have highest priority).
+		// Session values override config file/env defaults since the user is
+		// explicitly restoring this session.
+		if *model == "" {
+			cfg.Model = sess.Metadata.Model
+		}
+		if *endpoint == "" {
+			cfg.Endpoint = sess.Metadata.Endpoint
+		}
+		// Always use session config values (they were set by the user during
+		// the original session). CLI flags already applied via LoadConfig.
+		if sess.Config.MaxContextTokens > 0 {
+			cfg.MaxContextTokens = sess.Config.MaxContextTokens
+		}
+		if sess.Config.CompactionThreshold > 0 {
+			cfg.CompactionThreshold = sess.Config.CompactionThreshold
+		}
+		if sess.Config.KeepRecentTokens > 0 {
+			cfg.KeepRecentTokens = sess.Config.KeepRecentTokens
+		}
+		if sess.Config.MaxTokens > 0 {
+			cfg.MaxTokens = sess.Config.MaxTokens
+		}
+		if sess.Config.SummarizationModel != "" {
+			cfg.SummarizationModel = sess.Config.SummarizationModel
+		}
+	}
+
+	if err := app.Run(cfg, *sessionPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

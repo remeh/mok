@@ -107,6 +107,11 @@ func (s *Screen) SetTokenCount(count int) {
 	s.statusBar.SetTokenCount(count)
 }
 
+// TokenCount returns the current token count from the status bar.
+func (s *Screen) TokenCount() int {
+	return s.statusBar.TokenCount()
+}
+
 // SetMaxTokens sets the max tokens in the status bar.
 func (s *Screen) SetMaxTokens(max int) {
 	s.statusBar.SetMaxTokens(max)

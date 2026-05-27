@@ -343,6 +343,12 @@ func (v *MessageView) Render() string {
 
 	v.ensureRendered()
 
+	// If ensureRendered bailed out (no usable width), return blank padding
+	// so the rest of the screen can still render without panicking.
+	if len(v.rendered) < len(v.messages) {
+		return StringsRepeat("\n", v.height)
+	}
+
 	// Flatten the cache and track line ranges per message.
 	var allLines []string
 	v.lineRanges = make([]messageLineRange, 0, len(v.messages))
