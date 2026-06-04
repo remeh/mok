@@ -339,29 +339,54 @@ func (a *Agent) runLoop(ctx context.Context, userMessage string, events chan<- E
 					}
 				}
 
-				// Execute the tool
+				// Execute the tool (if not cancelled by user)
 				var result string
 				var isError bool
+				needsExec := true
 
-				debug.Tool("TOOL", "Executing %s with args: %s", tc.Name, string(args))
-
-				if a.tools != nil {
-					if tool := a.tools.Get(tc.Name); tool != nil {
-						result, err = tool.Execute(args)
-						isError = (err != nil)
-						if err != nil {
-							result = fmt.Sprintf("Error executing %s: %v", tc.Name, err)
-						}
-					} else {
-						result = fmt.Sprintf("Unknown tool: %s", tc.Name)
-						isError = true
+				// Check if this tool call needs confirmation
+				if a.needsConfirmation(tc.Name, args) {
+					// Emit confirmation event so the UI can display the prompt
+					events <- EventToolCallConfirm{
+						ToolCallID: tc.ID,
+						Name:       tc.Name,
+						RawArgs:    tc.RawArgs,
 					}
-				} else {
-					result = fmt.Sprintf("No tool registry configured for: %s", tc.Name)
-					isError = true
+					debug.Event("EVENT", "tool_call_confirm: id=%s name=%s", tc.ID, tc.Name)
+
+					confirmed, confirmErr := a.requestConfirmation(ctx)
+					if confirmErr != nil {
+						result = fmt.Sprintf("Command execution cancelled: %v", confirmErr)
+						isError = true
+						needsExec = false
+					} else if !confirmed {
+						result = "User declined to execute this command"
+						isError = false
+						needsExec = false
+					}
 				}
 
-				debug.Tool("TOOL", "%s completed: err=%v, output_len=%d", tc.Name, err, len(result))
+				if needsExec {
+					debug.Tool("TOOL", "Executing %s with args: %s", tc.Name, string(args))
+
+					if a.tools != nil {
+						if tool := a.tools.Get(tc.Name); tool != nil {
+							result, err = tool.Execute(args)
+							isError = (err != nil)
+							if err != nil {
+								result = fmt.Sprintf("Error executing %s: %v", tc.Name, err)
+							}
+						} else {
+							result = fmt.Sprintf("Unknown tool: %s", tc.Name)
+							isError = true
+						}
+					} else {
+						result = fmt.Sprintf("No tool registry configured for: %s", tc.Name)
+						isError = true
+					}
+
+					debug.Tool("TOOL", "%s completed: err=%v, output_len=%d", tc.Name, err, len(result))
+				}
 
 				// Append tool result immediately after in matching order
 				toolResultMsg := llm.Message{

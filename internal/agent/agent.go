@@ -2,12 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/user/mok/internal/compaction"
 	"github.com/user/mok/internal/llm"
 	"github.com/user/mok/internal/tools"
+	"github.com/user/mok/internal/types"
 )
 
 // AgentConfig holds the configuration values the agent needs.
@@ -20,6 +22,18 @@ type AgentConfig struct {
 	CompactionThreshold float64
 	KeepRecentTokens    int
 	SummarizationModel  string
+
+	// Bash confirmation settings
+	BashConfirmPolicy    string
+	BashConfirmBlocklist []string
+	BashConfirmAllowlist []string
+}
+
+// ConfirmationRequest is sent when a tool call needs user confirmation.
+type ConfirmationRequest struct {
+	ToolCallID string
+	Name       string
+	Args       json.RawMessage
 }
 
 // Agent manages the conversation loop.
@@ -33,6 +47,9 @@ type Agent struct {
 	lastThinking string
 	debug        *DebugLogger
 	compactor    *compaction.Compactor
+
+	// Confirmation channel (nil = no confirmation / auto-approve)
+	confirmRespCh <-chan types.ConfirmationResponse
 }
 
 // NewAgent creates a new Agent.
@@ -133,6 +150,57 @@ func (a *Agent) SetDebug(debug *DebugLogger) {
 func (a *Agent) SetClientDebug(debug *DebugLogger) {
 	if a.client != nil {
 		a.client.WithDebug(debug)
+	}
+}
+
+// SetConfirmationChannels sets up the confirmation response channel.
+// The agent blocks on this channel when a tool call requires user approval.
+// Pass nil to disable confirmation (auto-approve all).
+func (a *Agent) SetConfirmationChannels(confirmRespCh <-chan types.ConfirmationResponse) {
+	a.confirmRespCh = confirmRespCh
+}
+
+// needsConfirmation checks if a tool call requires user confirmation
+// based on the configured bash confirmation policy.
+func (a *Agent) needsConfirmation(name string, args json.RawMessage) bool {
+	if a.config.BashConfirmPolicy == "none" || a.confirmRespCh == nil {
+		return false // No confirmation mechanism or policy disabled
+	}
+
+	if name != "bash" {
+		return false // Only bash tool requires confirmation currently
+	}
+
+	// Extract command from args
+	var bashArgs tools.BashArgs
+	if err := json.Unmarshal(args, &bashArgs); err != nil {
+		return true // If we can't parse args, err on the side of caution
+	}
+
+	return tools.BashTool{}.NeedsConfirmation(
+		bashArgs.Command,
+		a.config.BashConfirmPolicy,
+		a.config.BashConfirmBlocklist,
+		a.config.BashConfirmAllowlist,
+	)
+}
+
+// requestConfirmation waits for the user's confirmation response.
+// The confirmation request is emitted as EventToolCallConfirm in the loop
+// before this function is called, so the UI can display the prompt.
+func (a *Agent) requestConfirmation(ctx context.Context) (bool, error) {
+	if a.confirmRespCh == nil {
+		return true, nil // No confirmation mechanism — auto-approve
+	}
+
+	select {
+	case resp, ok := <-a.confirmRespCh:
+		if !ok {
+			return false, fmt.Errorf("confirmation channel closed")
+		}
+		return resp.Approved, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
 	}
 }
 

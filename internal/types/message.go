@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+// ConfirmationResponse is the user's response to a tool call confirmation request.
+type ConfirmationResponse struct {
+	Approved bool
+}
+
 // MessageType identifies the kind of message.
 type MessageType string
 
@@ -32,6 +37,7 @@ type Message struct {
 	ThinkingExpanded bool // When true, show full thinking text
 	Timestamp        time.Time
 	IsTurnStats      bool // When true, this is a turn stats line (dim, no pin)
+	IsConfirmation   bool // When true, this is a confirmation prompt awaiting user input
 }
 
 // NewMessage creates a new Message with a unique ID.

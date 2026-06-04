@@ -36,6 +36,7 @@ func main() {
 	debug := flag.Bool("debug", false, "Enable debug logging to stderr")
 	uiLogPath := flag.String("ui-log-path", "", "Path for UI session log (requires -debug flag)")
 	sessionPath := flag.String("session", "", "Path to session file to restore")
+	bashConfirmPolicy := flag.String("bash-confirm-policy", "", "Bash confirmation policy: blocklist, allowlist, or none")
 
 	flag.Parse()
 
@@ -53,6 +54,7 @@ func main() {
 		"max-tokens":         fmt.Sprintf("%d", *maxTokens),
 		"debug":              fmt.Sprintf("%t", *debug),
 		"ui-log-path":        *uiLogPath,
+		"bash-confirm-policy": *bashConfirmPolicy,
 	}
 
 	cfg, err := app.LoadConfig(flags)
@@ -151,10 +153,13 @@ func runPrompt(cfg *app.Config, prompt string, timeoutSec int) error {
 	toolRegistry.Add(&tools.BashTool{CWD: cfg.CWD})
 
 	agt := agent.NewAgent(client, agent.AgentConfig{
-		Model:        cfg.Model,
-		MaxTokens:    cfg.MaxTokens,
-		CWD:          cfg.CWD,
-		SystemPrompt: cfg.SystemPrompt,
+		Model:               cfg.Model,
+		MaxTokens:           cfg.MaxTokens,
+		CWD:                 cfg.CWD,
+		SystemPrompt:        cfg.SystemPrompt,
+		BashConfirmPolicy:   "none", // Auto-confirm all commands in prompt mode
+		BashConfirmBlocklist: nil,
+		BashConfirmAllowlist: nil,
 	}, toolRegistry, debug)
 
 	startTime := time.Now()

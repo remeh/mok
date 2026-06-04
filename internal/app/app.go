@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,6 +43,14 @@ type modelSelectorState struct {
 	waitingFor modelSelectorStateEnum
 }
 
+// PendingConfirmation holds state for an in-progress confirmation prompt.
+type PendingConfirmation struct {
+	ToolCallID string
+	Name       string
+	RawArgs    string
+	RespCh     chan<- types.ConfirmationResponse
+}
+
 // AppModel is the root bubbletea model for the application.
 type AppModel struct {
 	Config         *Config
@@ -70,6 +79,11 @@ type AppModel struct {
 	sessionPath        string // Path to session file (empty if new session)
 	hasUserActivity    bool   // Track if user has sent any prompts
 	lastSavedSession   string // Path of last saved session (for post-quit message)
+
+	// Confirmation flow state
+	pendingConfirmation *PendingConfirmation
+	confirmRespCh       chan<- types.ConfirmationResponse // Channel to send user's confirmation response to the agent
+	confirmRespChRecv   <-chan types.ConfirmationResponse // Receive-only side for the agent
 }
 
 // NewAppModel creates a new AppModel with the given config and optional session path.
@@ -150,7 +164,15 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 		CompactionThreshold: cfg.CompactionThreshold,
 		KeepRecentTokens:    cfg.KeepRecentTokens,
 		SummarizationModel:  cfg.SummarizationModel,
+		BashConfirmPolicy:   cfg.BashConfirmPolicy,
+		BashConfirmBlocklist: cfg.BashConfirmBlocklist,
+		BashConfirmAllowlist: cfg.BashConfirmAllowlist,
 	}, toolRegistry, debug)
+
+	// Set up confirmation channel for TUI mode
+	confirmRespCh := make(chan types.ConfirmationResponse, 1)
+	confirmRespChRecv := (<-chan types.ConfirmationResponse)(confirmRespCh)
+	agt.SetConfirmationChannels(confirmRespChRecv)
 
 	// Create UI log writer (only when debug is enabled).
 	var uiLogWriter *UILogWriter
@@ -165,14 +187,16 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 	}
 
 	model := &AppModel{
-		Config:      cfg,
-		Screen:      screen,
-		Agent:       agt,
-		Debug:       debug,
-		UILogWriter: uiLogWriter,
-		Messages:    make([]*types.Message, 0),
-		eventChan:   make(chan agentEvent, 128),
-		sessionPath: sessionPath,
+		Config:          cfg,
+		Screen:          screen,
+		Agent:           agt,
+		Debug:           debug,
+		UILogWriter:     uiLogWriter,
+		Messages:        make([]*types.Message, 0),
+		eventChan:       make(chan agentEvent, 128),
+		sessionPath:     sessionPath,
+		confirmRespCh:   confirmRespCh,
+		confirmRespChRecv: confirmRespChRecv,
 	}
 
 	// If restoring session, load it
@@ -235,6 +259,48 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Screen.SetDimensions(msg.Width, msg.Height)
 
 	case tea.KeyMsg:
+		// Handle confirmation prompt first (blocks other input)
+		if m.pendingConfirmation != nil {
+			switch msg.Type {
+			case tea.KeyEnter:
+				// Enter = confirm
+				m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: true}
+				m.pendingConfirmation = nil
+				m.Screen.SetBlocked(false)
+				m.Screen.SetStatusBarState(tui.StatusProcessing)
+				return m, nil
+			case tea.KeyRunes:
+				if len(msg.Runes) > 0 {
+					switch msg.Runes[0] {
+					case 'y', 'Y': // Y = confirm
+						m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: true}
+						m.pendingConfirmation = nil
+						m.Screen.SetBlocked(false)
+						m.Screen.SetStatusBarState(tui.StatusProcessing)
+						return m, nil
+					case 'n', 'N': // N = decline
+						m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: false}
+						m.pendingConfirmation = nil
+						m.Screen.SetBlocked(false)
+						m.Screen.SetStatusBarState(tui.StatusProcessing)
+						return m, nil
+					}
+				}
+				// Ignore other keys during confirmation
+				return m, nil
+			case tea.KeyCtrlC:
+				// Cancel the entire turn
+				m.abortAgent()
+				m.pendingConfirmation = nil
+				m.Screen.SetBlocked(false)
+				m.Screen.SetStatusBarState(tui.StatusIdle)
+				return m, nil
+			default:
+				// Ignore other keys during confirmation
+				return m, nil
+			}
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			if m.agentRunning {
@@ -581,6 +647,28 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 			m.Messages = append(m.Messages, cancelMsg)
 			m.Screen.GetMessageView().MessageGrew()
 		}
+
+	case agent.EventToolCallConfirm:
+		// Show confirmation prompt and wait for user response
+		m.pendingConfirmation = &PendingConfirmation{
+			ToolCallID: ev.ToolCallID,
+			Name:       ev.Name,
+			RawArgs:    ev.RawArgs,
+			RespCh:     m.confirmRespCh, // Use the channel wired to the agent
+		}
+
+		// Extract command from JSON args for display
+		var bashArgs tools.BashArgs
+		if err := json.Unmarshal([]byte(ev.RawArgs), &bashArgs); err == nil {
+			confirmMsg := types.NewSystemMessage(
+				fmt.Sprintf("⚠ Do you confirm you want to run this command?\n  %s\n  (Y/n): ", bashArgs.Command))
+			confirmMsg.IsConfirmation = true
+			m.Messages = append(m.Messages, confirmMsg)
+			m.Screen.GetMessageView().MessageGrew()
+		}
+
+		m.Screen.SetStatusBarState(tui.StatusWaitingConfirm)
+		m.Screen.SetBlocked(true)
 	}
 }
 
@@ -1076,7 +1164,11 @@ func (m *AppModel) recreateAgent() {
 		CompactionThreshold: m.Config.CompactionThreshold,
 		KeepRecentTokens:    m.Config.KeepRecentTokens,
 		SummarizationModel:  m.Config.SummarizationModel,
+		BashConfirmPolicy:   m.Config.BashConfirmPolicy,
+		BashConfirmBlocklist: m.Config.BashConfirmBlocklist,
+		BashConfirmAllowlist: m.Config.BashConfirmAllowlist,
 	}, toolRegistry, m.Debug)
+	m.Agent.SetConfirmationChannels(m.confirmRespChRecv)
 }
 
 // submitMessage adds a user message and starts the agent loop.

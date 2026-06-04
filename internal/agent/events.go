@@ -99,6 +99,16 @@ type EventToolResult struct {
 
 func (EventToolResult) eventType() string { return "tool_result" }
 
+// EventToolCallConfirm is emitted when a tool call requires user confirmation.
+// The agent loop will block until a response is received via the confirmation channel.
+type EventToolCallConfirm struct {
+	ToolCallID string
+	Name       string
+	RawArgs    string // JSON args (we extract "command" for display)
+}
+
+func (EventToolCallConfirm) eventType() string { return "tool_call_confirm" }
+
 // EventCompactionStart is emitted when compaction begins.
 type EventCompactionStart struct {
 	TokensBefore int

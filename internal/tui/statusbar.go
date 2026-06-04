@@ -17,6 +17,7 @@ const (
 	StatusError      StatusBarState = "error"
 	StatusProcessing StatusBarState = "processing"
 	StatusToolCall   StatusBarState = "tool_call"
+	StatusWaitingConfirm StatusBarState = "waiting_confirm"
 )
 
 // StatusBar renders the bottom status bar.
@@ -183,6 +184,8 @@ func (s *StatusBar) renderStatus() string {
 	case StatusCompacting:
 		dots := dotSuffix(s.dotPhase)
 		return s.theme.StatusBarActive.Render("compacting" + dots)
+	case StatusWaitingConfirm:
+		return s.theme.StatusBarActive.Render("⧖ waiting for confirmation...")
 	default:
 		return s.theme.StatusBar.Render(string(s.state))
 	}

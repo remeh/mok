@@ -17,6 +17,11 @@ type Config struct {
 	Debug               bool    `yaml:"debug"`
 	UILogPath           string  `yaml:"ui_log_path"`
 
+	// Bash confirmation
+	BashConfirmPolicy    string   `yaml:"bash_confirm_policy"`     // "blocklist", "allowlist", or "none"
+	BashConfirmBlocklist []string `yaml:"bash_confirm_blocklist"`  // Dangerous patterns (for blocklist policy)
+	BashConfirmAllowlist []string `yaml:"bash_confirm_allowlist"`  // Safe patterns (for allowlist policy)
+
 	// Input behavior
 	EnableMultiLine      bool `yaml:"enable_multiline"`       // Enable multi-line editing
 	EnableAutocomplete   bool `yaml:"enable_autocomplete"`    // Enable command autocomplete
@@ -37,10 +42,40 @@ func DefaultConfig() *Config {
 		MaxTokens:           0,
 		UILogPath:           "",
 
-		// Input behavior defaults
-		EnableMultiLine:      true,
-		EnableAutocomplete:   true,
-		AutocompleteMaxItems: 10,
-		TabCompletes:         true,
-	}
+		// Bash confirmation defaults
+	BashConfirmPolicy:    "blocklist",
+	BashConfirmBlocklist: []string{
+		// Destructive commands
+		"rm ", "rm -rf", "rm -fr",
+		"sudo ", "su ", "su -",
+		"chmod -R", "chown -R",
+		"dd ", "mkfs", "fdisk", "parted",
+		"> /dev/", ">> /dev/",
+		"eval ", "exec ",
+		"python", "python3", "node", "perl", "ruby",
+
+		// Dangerous flags on otherwise-safe commands (two-pass parameter scan)
+		" -delete",               // find ... -delete
+		"-exec rm ",              // find ... -exec rm ...
+		"-exec rm -rf ",          // find ... -exec rm -rf ...
+		"| xargs rm ",            // piped deletion
+		"| xargs rm -rf ",
+		"| bash",                 // pipe to execution
+		"| sh",
+		"curl |", "wget |",       // pipe-to-execution variants
+	},
+	BashConfirmAllowlist: []string{
+		"git ", "ls ", "cat ", "grep ", "find ", "which ", "pwd",
+		"echo ", "date ", "whoami ", "hostname ",
+		"cd ", "mkdir ", "touch ",
+		"make ", "go ", "cargo ", "npm ", "pip ",
+		"docker ps", "docker images", "docker logs",
+	},
+
+	// Input behavior defaults
+	EnableMultiLine:      true,
+	EnableAutocomplete:   true,
+	AutocompleteMaxItems: 10,
+	TabCompletes:         true,
+}
 }

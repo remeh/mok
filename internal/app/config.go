@@ -126,6 +126,9 @@ func loadFromEnv(cfg *Config) error {
 	if v, ok := envMap["UI_LOG_PATH"]; ok && v != "" {
 		cfg.UILogPath = v
 	}
+	if v, ok := envMap["BASH_CONFIRM_POLICY"]; ok && v != "" {
+		cfg.BashConfirmPolicy = v
+	}
 	if v, ok := envMap["ENABLE_MULTILINE"]; ok && v == "true" {
 		cfg.EnableMultiLine = true
 	}
@@ -188,6 +191,9 @@ func applyFlags(cfg *Config, flags map[string]string) {
 	if v, ok := flags["tab-completes"]; ok && v == "true" {
 		cfg.TabCompletes = true
 	}
+	if v, ok := flags["bash-confirm-policy"]; ok && v != "" {
+		cfg.BashConfirmPolicy = v
+	}
 }
 
 // mergeConfig overlays non-zero values from src onto dst.
@@ -218,6 +224,15 @@ func mergeConfig(dst, src *Config) {
 	}
 	if src.Debug {
 		dst.Debug = true
+	}
+	if src.BashConfirmPolicy != "" {
+		dst.BashConfirmPolicy = src.BashConfirmPolicy
+	}
+	if len(src.BashConfirmBlocklist) > 0 {
+		dst.BashConfirmBlocklist = src.BashConfirmBlocklist
+	}
+	if len(src.BashConfirmAllowlist) > 0 {
+		dst.BashConfirmAllowlist = src.BashConfirmAllowlist
 	}
 	if src.UILogPath != "" {
 		dst.UILogPath = src.UILogPath

@@ -29,6 +29,52 @@ type BashTool struct {
 	Timeout time.Duration
 }
 
+// NeedsConfirmation returns true if the command matches a dangerous pattern
+// based on the configured policy. Uses two-pass matching for allowlist mode:
+//
+//  1. If policy is "allowlist": check if command starts with any safe prefix.
+//     If not in allowlist → confirm.
+//  2. Always scan for dangerous parameter patterns (substring match) regardless
+//     of allowlist status — handles cases like `find /tmp -delete`.
+func (t BashTool) NeedsConfirmation(command string, policy string, blocklist []string, allowlist []string) bool {
+	switch policy {
+	case "none":
+		return false
+	case "allowlist":
+		if !matchesAnyPrefix(command, allowlist) {
+			return true // not in allowlist → confirm
+		}
+		// In allowlist but still check dangerous parameter patterns
+		return matchesAnySubstring(command, blocklist)
+	case "blocklist", "":
+		fallthrough
+	default:
+		return matchesAnySubstring(command, blocklist)
+	}
+}
+
+// matchesAnyPrefix checks if the command starts with any of the given prefixes (case-insensitive).
+func matchesAnyPrefix(command string, patterns []string) bool {
+	cmd := strings.ToLower(strings.TrimSpace(command))
+	for _, p := range patterns {
+		if strings.HasPrefix(cmd, strings.ToLower(strings.TrimSpace(p))) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesAnySubstring checks if the command contains any of the given substrings (case-insensitive).
+func matchesAnySubstring(command string, patterns []string) bool {
+	cmd := strings.ToLower(command)
+	for _, p := range patterns {
+		if strings.Contains(cmd, strings.ToLower(p)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Definition returns the tool's metadata.
 func (t *BashTool) Definition() ToolDefinition {
 	return ToolDefinition{
