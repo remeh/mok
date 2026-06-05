@@ -273,6 +273,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.KeyEnter:
 				// Enter = confirm
 				m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: true}
+				// Display the confirmation choice
+				confirmMsg := types.NewSystemMessage("✅ User confirmed (Enter)")
+				m.Messages = append(m.Messages, confirmMsg)
+				m.Screen.GetMessageView().MessageGrew()
 				m.pendingConfirmation = nil
 				m.Screen.SetBlocked(false)
 				m.Screen.SetStatusBarState(tui.StatusProcessing)
@@ -282,12 +286,20 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch msg.Runes[0] {
 					case 'y', 'Y': // Y = confirm
 						m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: true}
+						// Display the confirmation choice
+						confirmMsg := types.NewSystemMessage("✅ User confirmed (Y)")
+						m.Messages = append(m.Messages, confirmMsg)
+						m.Screen.GetMessageView().MessageGrew()
 						m.pendingConfirmation = nil
 						m.Screen.SetBlocked(false)
 						m.Screen.SetStatusBarState(tui.StatusProcessing)
 						return m, nil
 					case 'n', 'N': // N = decline
 						m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: false}
+						// Display the confirmation choice
+						confirmMsg := types.NewSystemMessage("❌ User declined (n)")
+						m.Messages = append(m.Messages, confirmMsg)
+						m.Screen.GetMessageView().MessageGrew()
 						m.pendingConfirmation = nil
 						m.Screen.SetBlocked(false)
 						m.Screen.SetStatusBarState(tui.StatusProcessing)
@@ -295,6 +307,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case 'a', 'A': // A = confirm and enable YOLO mode
 						m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: true, EnableYoloMode: true}
 						m.yoloMode = true
+						// Display the confirmation choice
+						confirmMsg := types.NewSystemMessage("✅ User confirmed (A) — YOLO mode enabled")
+						m.Messages = append(m.Messages, confirmMsg)
+						m.Screen.GetMessageView().MessageGrew()
 						m.pendingConfirmation = nil
 						m.Screen.SetBlocked(false)
 						m.Screen.SetYoloMode(true)
@@ -309,6 +325,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.KeyCtrlC:
 				// Cancel the entire turn
 				m.abortAgent()
+				// Display the cancellation
+				confirmMsg := types.NewSystemMessage("⚠ Confirmation cancelled (Ctrl+C)")
+				m.Messages = append(m.Messages, confirmMsg)
+				m.Screen.GetMessageView().MessageGrew()
 				m.pendingConfirmation = nil
 				m.Screen.SetBlocked(false)
 				m.Screen.SetStatusBarState(tui.StatusIdle)

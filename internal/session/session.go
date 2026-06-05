@@ -45,6 +45,7 @@ type SessionMessage struct {
 	ThinkingExpanded bool              `json:"thinking_expanded"`
 	Timestamp        time.Time         `json:"timestamp"`
 	IsTurnStats      bool              `json:"is_turn_stats"`
+	IsConfirmation   bool              `json:"is_confirmation"`
 }
 
 // Session represents the complete session state.
@@ -247,6 +248,7 @@ func ToSessionMessage(msg *types.Message) SessionMessage {
 		ThinkingExpanded: msg.ThinkingExpanded,
 		Timestamp:        msg.Timestamp,
 		IsTurnStats:      msg.IsTurnStats,
+		IsConfirmation:   msg.IsConfirmation,
 	}
 }
 
@@ -265,6 +267,7 @@ func ToAppMessage(sm *SessionMessage) *types.Message {
 		ThinkingExpanded: sm.ThinkingExpanded,
 		Timestamp:        sm.Timestamp,
 		IsTurnStats:      sm.IsTurnStats,
+		IsConfirmation:   sm.IsConfirmation,
 	}
 	return msg
 }
