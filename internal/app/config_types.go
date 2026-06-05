@@ -49,10 +49,10 @@ func DefaultConfig() *Config {
 		"rm ", "rm -rf", "rm -fr",
 		"sudo ", "su ", "su -",
 		"chmod -R", "chown -R",
-		"dd ", "mkfs", "fdisk", "parted",
-		"> /dev/", ">> /dev/",
+		"dd ", "mkfs ", "fdisk ", "parted ",
+		"> /dev/", ">> /dev/", ">/dev", ">>/dev",
 		"eval ", "exec ",
-		"python", "python3", "node", "perl", "ruby",
+		"python ", "python3 ", "node ", "perl ", "ruby ",
 
 		// Dangerous flags on otherwise-safe commands (two-pass parameter scan)
 		" -delete",               // find ... -delete
@@ -62,7 +62,6 @@ func DefaultConfig() *Config {
 		"| xargs rm -rf ",
 		"| bash",                 // pipe to execution
 		"| sh",
-		"curl |", "wget |",       // pipe-to-execution variants
 	},
 	BashConfirmAllowlist: []string{
 		"git ", "ls ", "cat ", "grep ", "find ", "which ", "pwd",

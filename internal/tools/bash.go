@@ -46,9 +46,7 @@ func (t BashTool) NeedsConfirmation(command string, policy string, blocklist []s
 		}
 		// In allowlist but still check dangerous parameter patterns
 		return matchesAnySubstring(command, blocklist)
-	case "blocklist", "":
-		fallthrough
-	default:
+	default: // "blocklist", "", or any unrecognized policy
 		return matchesAnySubstring(command, blocklist)
 	}
 }
