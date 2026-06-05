@@ -18,6 +18,7 @@ const (
 	StatusProcessing StatusBarState = "processing"
 	StatusToolCall   StatusBarState = "tool_call"
 	StatusWaitingConfirm StatusBarState = "waiting_confirm"
+	StatusYolo       StatusBarState = "yolo"
 )
 
 // StatusBar renders the bottom status bar.
@@ -34,6 +35,7 @@ type StatusBar struct {
 	dotPhase      int // 0..2, cycles to produce ".  " ".. " "..."
 	tickCount     int // raw tick counter; dotPhase advances every dotTickInterval ticks
 	lastUpdate    time.Time
+	yoloMode      bool // when true, show YOLO indicator
 }
 
 const dotTickInterval = 10 // advance dots every 10 ticks (~1s at 100ms tick rate)
@@ -101,6 +103,11 @@ func (s *StatusBar) SetWidth(width int) {
 	s.width = width
 }
 
+// SetYoloMode sets the YOLO mode indicator.
+func (s *StatusBar) SetYoloMode(enabled bool) {
+	s.yoloMode = enabled
+}
+
 // Tick advances the dot animation.
 func (s *StatusBar) Tick() {
 	s.tickCount++
@@ -164,31 +171,45 @@ func (s *StatusBar) renderStatus() string {
 		return s.theme.StatusBarActive.Render(s.statusMessage)
 	}
 
+	// Build the base status string
+	var baseStatus string
 	switch s.state {
 	case StatusIdle:
-		return s.theme.StatusBarIdle.Render("● ready")
+		baseStatus = s.theme.StatusBarIdle.Render("● ready")
 	case StatusError:
-		return s.theme.StatusBarError.Render("✗ error")
+		baseStatus = s.theme.StatusBarError.Render("✗ error")
 	case StatusToolCall:
 		dots := dotSuffix(s.dotPhase)
 		if s.toolName != "" {
-			return s.theme.StatusBarActive.Render("executing: " + s.toolName + dots)
+			baseStatus = s.theme.StatusBarActive.Render("executing: " + s.toolName + dots)
+		} else {
+			baseStatus = s.theme.StatusBarActive.Render("executing tool" + dots)
 		}
-		return s.theme.StatusBarActive.Render("executing tool" + dots)
 	case StatusProcessing:
 		dots := dotSuffix(s.dotPhase)
-		return s.theme.StatusBarActive.Render("processing" + dots)
+		baseStatus = s.theme.StatusBarActive.Render("processing" + dots)
 	case StatusStreaming:
 		dots := dotSuffix(s.dotPhase)
-		return s.theme.StatusBarActive.Render("streaming" + dots)
+		baseStatus = s.theme.StatusBarActive.Render("streaming" + dots)
 	case StatusCompacting:
 		dots := dotSuffix(s.dotPhase)
-		return s.theme.StatusBarActive.Render("compacting" + dots)
+		baseStatus = s.theme.StatusBarActive.Render("compacting" + dots)
 	case StatusWaitingConfirm:
-		return s.theme.StatusBarActive.Render("⧖ waiting for confirmation...")
+		baseStatus = s.theme.StatusBarActive.Render("⧖ waiting for confirmation...")
+	case StatusYolo:
+		// Fallback for backward compatibility - should use SetYoloMode instead
+		baseStatus = s.theme.StatusBarError.Render("🟥 YOLO")
 	default:
-		return s.theme.StatusBar.Render(string(s.state))
+		baseStatus = s.theme.StatusBar.Render(string(s.state))
 	}
+
+	// Append YOLO indicator if enabled
+	if s.yoloMode {
+		yoloIndicator := s.theme.StatusBarError.Render(" 🟥 YOLO")
+		return baseStatus + yoloIndicator
+	}
+
+	return baseStatus
 }
 
 // dotSuffix returns a fixed-width (3 chars) dot suffix: ".  " ".. " "..."

@@ -122,6 +122,11 @@ func (s *Screen) SetStatusBarState(state StatusBarState) {
 	s.statusBar.SetState(state)
 }
 
+// SetYoloMode sets the YOLO mode indicator in the status bar.
+func (s *Screen) SetYoloMode(enabled bool) {
+	s.statusBar.SetYoloMode(enabled)
+}
+
 // SetToolName sets the name of the tool being executed.
 func (s *Screen) SetToolName(name string) {
 	s.statusBar.SetToolName(name)

@@ -65,6 +65,9 @@ type AppModel struct {
 	quitting       bool
 	quitWithCtrlC  bool // track if quit was via Ctrl-C
 
+	// YOLO mode
+	yoloMode bool // when true, skip bash command confirmations
+
 	// Agent event handling
 	agentRunning  bool
 	streamMsg     *types.Message
@@ -149,6 +152,11 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 	cmdRegistry.Register(tui.CommandDefinition{
 		Name:        "compact",
 		Description: "Manually compact conversation history",
+		HasArgs:     false,
+	})
+	cmdRegistry.Register(tui.CommandDefinition{
+		Name:        "yolo",
+		Description: "Toggle YOLO mode (skip bash command confirmations)",
 		HasArgs:     false,
 	})
 
@@ -283,6 +291,16 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.pendingConfirmation = nil
 						m.Screen.SetBlocked(false)
 						m.Screen.SetStatusBarState(tui.StatusProcessing)
+						return m, nil
+					case 'a', 'A': // A = confirm and enable YOLO mode
+						m.pendingConfirmation.RespCh <- types.ConfirmationResponse{Approved: true, EnableYoloMode: true}
+						m.yoloMode = true
+						m.pendingConfirmation = nil
+						m.Screen.SetBlocked(false)
+						m.Screen.SetYoloMode(true)
+						yoloMsg := types.NewSystemMessage("🟥 YOLO mode enabled — all bash commands will execute without confirmation")
+						m.Messages = append(m.Messages, yoloMsg)
+						m.Screen.GetMessageView().MessageGrew()
 						return m, nil
 					}
 				}
@@ -649,6 +667,16 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		}
 
 	case agent.EventToolCallConfirm:
+		// Check if YOLO mode is active — auto-approve without showing prompt
+		if m.yoloMode {
+			// Send approval directly in a goroutine to avoid blocking the event handler
+			go func() {
+				m.confirmRespCh <- types.ConfirmationResponse{Approved: true}
+			}()
+			// Don't show prompt, just continue processing
+			return
+		}
+
 		// Show confirmation prompt and wait for user response
 		m.pendingConfirmation = &PendingConfirmation{
 			ToolCallID: ev.ToolCallID,
@@ -661,7 +689,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		var bashArgs tools.BashArgs
 		if err := json.Unmarshal([]byte(ev.RawArgs), &bashArgs); err == nil {
 			confirmMsg := types.NewSystemMessage(
-				fmt.Sprintf("⚠ Do you confirm you want to run this command?\n  %s\n  (Y/n): ", bashArgs.Command))
+				fmt.Sprintf("⚠ Do you confirm you want to run this command?\n  %s\n  (Y/n/A): ", bashArgs.Command))
 			confirmMsg.IsConfirmation = true
 			m.Messages = append(m.Messages, confirmMsg)
 			m.Screen.GetMessageView().MessageGrew()
@@ -933,6 +961,7 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 		helpText += "  /debug on|off  - Toggle debug mode\n"
 		helpText += "  /clear         - Clear conversation\n"
 		helpText += "  /compact       - Manually compact conversation history\n"
+		helpText += "  /yolo          - Toggle YOLO mode (skip bash command confirmations)\n"
 		helpText += "  /quit | /exit  - Exit application\n"
 		helpText += "  /help          - Show this help\n"
 
@@ -943,6 +972,9 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 
 	case "compact":
 		return m.handleCompactCommand(), true
+
+	case "yolo":
+		return m.handleYoloCommand(), true
 
 	default:
 		msg := types.NewSystemMessage("unknown command: " + text)
@@ -1058,6 +1090,25 @@ func (m *AppModel) handleCompactCommand() tea.Cmd {
 			Done: true,
 		}
 	}
+}
+
+// handleYoloCommand toggles YOLO mode.
+func (m *AppModel) handleYoloCommand() tea.Cmd {
+	m.yoloMode = !m.yoloMode
+
+	if m.yoloMode {
+		m.Screen.SetYoloMode(true)
+		yoloMsg := types.NewSystemMessage("🟥 YOLO mode enabled — all bash commands will execute without confirmation")
+		m.Messages = append(m.Messages, yoloMsg)
+		m.Screen.GetMessageView().MessageGrew()
+	} else {
+		m.Screen.SetYoloMode(false)
+		yoloMsg := types.NewSystemMessage("YOLO mode disabled — bash commands will require confirmation")
+		m.Messages = append(m.Messages, yoloMsg)
+		m.Screen.GetMessageView().MessageGrew()
+	}
+
+	return nil
 }
 
 // handleModelSelection processes the result of fetching models.

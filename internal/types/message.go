@@ -8,7 +8,8 @@ import (
 
 // ConfirmationResponse is the user's response to a tool call confirmation request.
 type ConfirmationResponse struct {
-	Approved bool
+	Approved       bool
+	EnableYoloMode bool // When true, enable YOLO mode for session
 }
 
 // MessageType identifies the kind of message.
