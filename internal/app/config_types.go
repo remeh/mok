@@ -48,11 +48,13 @@ func DefaultConfig() *Config {
 		// Destructive commands
 		"rm ", "rm -rf", "rm -fr",
 		"sudo ", "su ", "su -",
-		"chmod -R", "chown -R",
+		"chmod ", "chown ",
 		"dd ", "mkfs ", "fdisk ", "parted ",
 		"> /dev/", ">> /dev/", ">/dev", ">>/dev",
 		"eval ", "exec ",
 		"python ", "python3 ", "node ", "perl ", "ruby ",
+		// I don't want remote call without knowing about them
+		"curl ", "wget ",
 
 		// Dangerous flags on otherwise-safe commands (two-pass parameter scan)
 		" -delete",               // find ... -delete
