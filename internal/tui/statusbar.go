@@ -12,10 +12,10 @@ type StatusBarState string
 
 const (
 	StatusIdle       StatusBarState = "idle"
-	StatusStreaming  StatusBarState = "streaming"
+	StatusStreaming  StatusBarState = "generating"
 	StatusCompacting StatusBarState = "compacting"
 	StatusError      StatusBarState = "error"
-	StatusProcessing StatusBarState = "processing"
+	StatusProcessing StatusBarState = "prefill"
 	StatusToolCall   StatusBarState = "tool_call"
 	StatusWaitingConfirm StatusBarState = "waiting_confirm"
 	StatusYolo       StatusBarState = "yolo"
@@ -187,10 +187,10 @@ func (s *StatusBar) renderStatus() string {
 		}
 	case StatusProcessing:
 		dots := dotSuffix(s.dotPhase)
-		baseStatus = s.theme.StatusBarActive.Render("processing" + dots)
+		baseStatus = s.theme.StatusBarActive.Render("prefill" + dots)
 	case StatusStreaming:
 		dots := dotSuffix(s.dotPhase)
-		baseStatus = s.theme.StatusBarActive.Render("streaming" + dots)
+		baseStatus = s.theme.StatusBarActive.Render("generating" + dots)
 	case StatusCompacting:
 		dots := dotSuffix(s.dotPhase)
 		baseStatus = s.theme.StatusBarActive.Render("compacting" + dots)

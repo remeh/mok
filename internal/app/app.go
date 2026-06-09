@@ -712,7 +712,9 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 				fmt.Sprintf("⚠ Do you confirm you want to run this command?\n  %s\n  (Y/n/A): ", bashArgs.Command))
 			confirmMsg.IsConfirmation = true
 			m.Messages = append(m.Messages, confirmMsg)
-			m.Screen.GetMessageView().MessageGrew()
+			// Always jump to the bottom so the confirmation prompt is visible,
+			// even if the user has pinned their scroll position by scrolling up.
+			m.Screen.GetMessageView().ScrollToBottom()
 		}
 
 		m.Screen.SetStatusBarState(tui.StatusWaitingConfirm)
@@ -901,7 +903,7 @@ func (m *AppModel) openEditor() tea.Cmd {
 
 		// Re-enable mouse mode: Bubble Tea's RestoreTerminal does not do it,
 		// and the editor (vi/nvim) may also leave mouse reporting disabled.
-		return tea.EnableMouseAllMotion()
+		return tea.EnableMouseCellMotion()
 	})
 }
 
@@ -1373,7 +1375,7 @@ func Run(cfg *Config, sessionPath string) error {
 
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),
-		tea.WithMouseAllMotion(),
+		tea.WithMouseCellMotion(),
 		tea.WithOutput(os.Stdout),
 	)
 

@@ -61,7 +61,7 @@ func TestStatusBarSetState(t *testing.T) {
 
 	bar.SetState(StatusStreaming)
 	rendered := bar.Render()
-	if !strings.Contains(rendered, "streaming...") {
+	if !strings.Contains(rendered, "generating...") {
 		t.Errorf("Render() should contain streaming state: %q", rendered)
 	}
 
@@ -79,7 +79,7 @@ func TestStatusBarSetState(t *testing.T) {
 
 	bar.SetState(StatusProcessing)
 	rendered = bar.Render()
-	if !strings.Contains(rendered, "processing...") {
+	if !strings.Contains(rendered, "prefill...") {
 		t.Errorf("Render() should contain processing state: %q", rendered)
 	}
 
