@@ -57,9 +57,11 @@ func NewMessageView(theme Theme) *MessageView {
 	return &MessageView{theme: theme}
 }
 
-// SetMessages sets the message list.
+// SetMessages sets the message list. If the view is not pinned, it follows
+// the tail so that any messages added since the last frame become visible.
 func (v *MessageView) SetMessages(messages []*types.Message) {
 	v.messages = messages
+	v.maybeFollowTail()
 }
 
 // AddMessage appends a message and follows the tail if not pinned.
