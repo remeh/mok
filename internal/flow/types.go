@@ -7,6 +7,7 @@ type AgentDefinition struct {
 	Model               string  `yaml:"model"`                // required
 	Prompt              string  `yaml:"prompt"`               // role-specific prompt (required)
 	Endpoint            string  `yaml:"endpoint"`             // optional, inherits from global
+	BearerToken         string  `yaml:"bearer_token"`         // optional, inherits from global
 	MaxTokens           int     `yaml:"max_tokens"`           // optional
 	MaxContextTokens    int     `yaml:"max_context_tokens"`   // optional
 	CompactionThreshold float64 `yaml:"compaction_threshold"` // optional

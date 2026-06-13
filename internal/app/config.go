@@ -319,6 +319,7 @@ func (c *Config) ResolveAgentConfig(name string) (flow.AgentConfig, error) {
 		Definition:              def,
 		GlobalModel:             c.Model,
 		GlobalEndpoint:          c.Endpoint,
+		GlobalBearerToken:       c.BearerToken,
 		GlobalMaxTokens:         c.MaxTokens,
 		GlobalMaxContextTokens:    c.MaxContextTokens,
 		GlobalCompactionThreshold: c.CompactionThreshold,

@@ -6,6 +6,7 @@ type AgentConfig struct {
 	Definition          AgentDefinition
 	GlobalModel         string
 	GlobalEndpoint      string
+	GlobalBearerToken   string
 	GlobalMaxTokens     int
 	GlobalMaxContextTokens    int
 	GlobalCompactionThreshold float64
@@ -26,6 +27,14 @@ func (c AgentConfig) ResolvedEndpoint() string {
 		return c.Definition.Endpoint
 	}
 	return c.GlobalEndpoint
+}
+
+// ResolvedBearerToken returns the effective bearer token.
+func (c AgentConfig) ResolvedBearerToken() string {
+	if c.Definition.BearerToken != "" {
+		return c.Definition.BearerToken
+	}
+	return c.GlobalBearerToken
 }
 
 // ResolvedMaxTokens returns the effective max_tokens.

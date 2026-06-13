@@ -31,7 +31,7 @@ tab_completes: true
 
 agents:
   architect:
-    model: qwen3.5-122b-coder
+    model: qwen3.5-122b-a10b-coder
     prompt: |
       You are a senior software architect and technical lead. Your responsibilities:
 
@@ -48,7 +48,7 @@ agents:
     max_tokens: 8192
 
   coder:
-    model: qwen3.6-27b-coder
+    model: qwen3.6-27b
     prompt: |
       You are an expert developer. You implement code according to specifications.
 
@@ -62,7 +62,7 @@ agents:
       made, and any open issues).
 
   reviewer:
-    model: qwen3.5-122b-coder
+    model: gemma4-31b
     prompt: |
       You are an expert code reviewer.  Review the most recent changes critically:
 
@@ -76,7 +76,7 @@ agents:
       If the code is excellent, say so explicitly and state "LGTM".
 
   tester:
-    model: qwen3.5-122b-coder
+    model: gemma4-31b
     prompt: |
       You are a QA expert.  Write and run tests for the implementation.
 
@@ -86,7 +86,7 @@ agents:
       - Report: pass/fail count, coverage gaps, and any flaky tests.
 
   docs-writer:
-    model: qwen3.6-27b-coder
+    model: qwen3.6-27b
     prompt: |
       You are a technical writer.  Produce clear, user‑facing documentation.
 
@@ -95,22 +95,22 @@ agents:
       - Keep sentences short.  Target a developer audience.
 
   lint-fixer:
-    model: qwen3.6-27b-coder
+    model: qwen3.6-27b
     prompt: |
-      You are a code‑quality specialist.  Run linters on the recent changes
+      You are a code-quality specialist.  Run linters on the recent changes
       and fix every diagnostic.
 
       - Use the bash tool to run `golangci-lint run`, `eslint`, `ruff`, etc.
       - Fix issues one at a time with the edit tool.
-      - Re‑run the linter after each batch of fixes until the output is clean.
+      - Re-run the linter after each batch of fixes until the output is clean.
 
   security-auditor:
-    model: qwen3.5-122b-coder
+    model: qwen3.5-122b-a10b
     prompt: |
-      You are an application‑security engineer.  Audit the code for vulnerabilities.
+      You are an application-security engineer.  Audit the code for vulnerabilities.
 
       - Read every file that was touched in the recent implementation.
-      - Look for OWASP Top‑10 classes: injection, broken auth, sensitive data
+      - Look for OWASP Top10 classes: injection, broken auth, sensitive data
         exposure, XXE, broken access control, security misconfiguration, XSS,
         deserialisation, known‑vulnerable components, insufficient logging.
       - Only flag *real*, exploitable issues.  Do not hallucinate findings.
@@ -119,14 +119,14 @@ agents:
 
       Output a structured report: "## Security Audit Results".
 
-# ── Flows ──────────────────────────────────────────────────────────────────
+# Flows ----------------
 #
 # Each flow is an ordered list of agent names.  Agents execute sequentially:
 # the previous agent's output is summarised and handed off to the next.
 
 flows:
 
-  # Full end‑to‑end implementation flow
+  # Full end-to-end implementation flow
   implementation:
     - architect
     - coder
@@ -140,7 +140,7 @@ flows:
     - tester
     - reviewer
 
-  # Security‑first workflow for sensitive features
+  # Security-first workflow for sensitive features
   security-review:
     - reviewer
     - security-auditor
@@ -152,7 +152,7 @@ flows:
     - docs-writer
     - reviewer
 
-  # Lint‑and‑fix (CI hygiene pass)
+  # Lint-and-fix (CI hygiene pass)
   lint-fix:
     - lint-fixer
     - reviewer
@@ -161,6 +161,6 @@ flows:
   solo-coder:
     - coder
 
-# ── Default flow (optional, used when no -flow flag is given) ──────────────
+# Default flow ----------------
 
 default_flow: solo-coder

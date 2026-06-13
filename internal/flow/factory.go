@@ -113,6 +113,9 @@ func (f *AgentFactory) resolveConfig(def AgentDefinition) resolvedAgentConfig {
 	if def.Endpoint != "" {
 		rc.Endpoint = def.Endpoint
 	}
+	if def.BearerToken != "" {
+		rc.BearerToken = def.BearerToken
+	}
 	if def.MaxTokens > 0 {
 		rc.MaxTokens = def.MaxTokens
 	}
