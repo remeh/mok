@@ -24,6 +24,7 @@ on running perfectly with non-frontier models.
 * Slash commands: model switching, debug toggle, compaction, flow selection, YOLO mode.
 
 ![Screenshot](https://raw.githubusercontent.com/remeh/mok/refs/heads/main/screenshot.png)
+![Screenshot 2](https://raw.githubusercontent.com/remeh/mok/refs/heads/main/screenshot2.png)
 
 ## Build
 
