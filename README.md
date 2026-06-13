@@ -6,7 +6,8 @@ for complex executions.
 Developed in Go, uses [Bubble Tea](https://github.com/charmbracelet/bubbletea) for the TUI.
 
 Talks to OpenAI-compatible LLM endpoints with SSE streaming.
-Handles tool calls (read, write, edit, bash), thinking and loops.
+Handles tool calls (read, write, edit, bash), thinking and loops. Strong focus
+on running perfectly with non-frontier models.
 
 
 ## Features
@@ -42,6 +43,22 @@ Or run the TUI:
 ```
 $ ./mok
 ```
+
+## Configuration
+
+Copy the example config to your config directory and customise it:
+
+```
+$ mkdir -p ~/.config/mok
+$ cp mok.example.yaml ~/.config/mok/config.yaml
+```
+
+`config.yaml` can be stored in these locations:
+
+- `./mok.yaml` (current directory)
+- `~/.config/mok/config.yaml` (user config)
+
+See `mok.example.yaml` for all supported options: global settings, bash confirm policies, multi-agent definitions, and flows...
 
 ## Tests
 
