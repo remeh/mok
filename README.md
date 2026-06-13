@@ -26,6 +26,33 @@ on running perfectly with non-frontier models.
 ![Screenshot](https://raw.githubusercontent.com/remeh/mok/refs/heads/main/screenshot.png)
 ![Screenshot 2](https://raw.githubusercontent.com/remeh/mok/refs/heads/main/screenshot2.png)
 
+## Multi-Agent Orchestration
+
+You define agents, each with its own prompt, model, and config overrides.
+Then you chain them into flows that run sequentially, with a handoff summary
+passed between each step. Each agent runs in its own isolated context.
+
+Run a flow from the TUI with `/flow <name>`. The status bar shows progress
+like `flow: implementation [2/5] coder`.
+
+See `mok.example.yaml` for several examples (feature implementation, security audit, ...).
+
+## Configuration
+
+Copy the example config to your config directory and customise it:
+
+```
+$ mkdir -p ~/.config/mok
+$ cp mok.example.yaml ~/.config/mok/config.yaml
+```
+
+`config.yaml` can be stored in these locations:
+
+- `./mok.yaml` (current directory)
+- `~/.config/mok/config.yaml` (user config)
+
+See `mok.example.yaml` for all supported options: global settings, bash confirm policies, multi-agent definitions, and flows...
+
 ## Build
 
 ```
@@ -44,22 +71,6 @@ Or run the TUI:
 ```
 $ ./mok
 ```
-
-## Configuration
-
-Copy the example config to your config directory and customise it:
-
-```
-$ mkdir -p ~/.config/mok
-$ cp mok.example.yaml ~/.config/mok/config.yaml
-```
-
-`config.yaml` can be stored in these locations:
-
-- `./mok.yaml` (current directory)
-- `~/.config/mok/config.yaml` (user config)
-
-See `mok.example.yaml` for all supported options: global settings, bash confirm policies, multi-agent definitions, and flows...
 
 ## Tests
 
