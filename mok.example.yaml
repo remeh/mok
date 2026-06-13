@@ -1,4 +1,4 @@
-# ── Global defaults (used as fallback for all agents) ──────────────────────
+# -- Global defaults (used as fallback for all agents)
 
 model: qwen3.6-35b-a3b-coder         # e.g. deepseek/deepseek-v4-pro
 endpoint: http://localhost:8080/v1   # e.g. openrouter with https://openrouter.ai/api/v1
@@ -8,22 +8,23 @@ compaction_threshold: 0.8
 keep_recent_tokens: 16384
 max_tokens: 0                         # 0 = unlimited
 
-# ── Bash confirmation ─────────────────────────────────────────────────────
+# -- Bash confirmation ---------
+# Do not overwrite these fieldsto use the default config.
 
-bash_confirm_policy: blocklist        # blocklist | allowlist | none
-bash_confirm_blocklist:
-  - rm 
-  - sudo 
-  - curl 
-  - wget 
+# bash_confirm_policy: blocklist        # blocklist | allowlist | none
+# bash_confirm_blocklist:               
+#   - rm 
+#   - sudo 
+#   - curl 
+#   - wget 
 
-# ── Input behaviour ────────────────────────────────────────────────────────
+# -- Input behaviour -----------
 
 enable_multiline: true
 enable_autocomplete: true
 tab_completes: true
 
-# ── Agents ─────────────────────────────────────────────────────────────────
+# -- Agents --------------------
 #
 # Each agent gets its own model, role prompt, and isolated context.
 # Fields not set inherit from the global defaults above.
@@ -119,9 +120,9 @@ agents:
 
       Output a structured report: "## Security Audit Results".
 
-# Flows ----------------
+# -- Flows ----------------
 #
-# Each flow is an ordered list of agent names.  Agents execute sequentially:
+# Each flow is an ordered list of agent names. Agents execute sequentially:
 # the previous agent's output is summarised and handed off to the next.
 
 flows:
@@ -161,6 +162,6 @@ flows:
   solo-coder:
     - coder
 
-# Default flow ----------------
+# -- Default flow ----------------
 
 default_flow: solo-coder
