@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 	"github.com/user/mok/internal/agent"
+	"github.com/user/mok/internal/flow"
 	"github.com/user/mok/internal/llm"
 	"github.com/user/mok/internal/session"
 	"github.com/user/mok/internal/tools"
@@ -76,6 +77,10 @@ type AppModel struct {
 
 	// Model selection
 	modelSelector *modelSelectorState
+
+	// Multi-agent flow
+	orchestrator *flow.FlowOrchestrator
+	activeFlow   string // name of the current flow during execution
 
 	// Session management
 	Session            *session.Session
@@ -194,6 +199,32 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 		}
 	}
 
+	// Initialize flow orchestrator if multi-agent mode is configured
+	var orch *flow.FlowOrchestrator
+	if cfg.HasAgents() && cfg.HasFlows() {
+		global := &flow.AgentConfigGlobal{
+			Model:               cfg.Model,
+			Endpoint:            cfg.Endpoint,
+			BearerToken:         cfg.BearerToken,
+			MaxTokens:           cfg.MaxTokens,
+			MaxContextTokens:    cfg.MaxContextTokens,
+			CompactionThreshold: cfg.CompactionThreshold,
+			KeepRecentTokens:    cfg.KeepRecentTokens,
+			SummarizationModel:  cfg.SummarizationModel,
+			CWD:                 cfg.CWD,
+		}
+		factory := flow.NewAgentFactory(global, toolRegistry, debug)
+		orch = flow.NewFlowOrchestrator(cfg.Agents, cfg.Flows, factory)
+
+		// Register flow names for autocomplete
+		cmdRegistry.Register(tui.CommandDefinition{
+			Name:        "flow",
+			Description: "Run a multi-agent flow",
+			HasArgs:     true,
+			ArgValues:   orch.ListFlows(),
+		})
+	}
+
 	model := &AppModel{
 		Config:          cfg,
 		Screen:          screen,
@@ -205,6 +236,7 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 		sessionPath:     sessionPath,
 		confirmRespCh:   confirmRespCh,
 		confirmRespChRecv: confirmRespChRecv,
+		orchestrator:    orch,
 	}
 
 	// If restoring session, load it
@@ -719,6 +751,39 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 
 		m.Screen.SetStatusBarState(tui.StatusWaitingConfirm)
 		m.Screen.SetBlocked(true)
+
+	case agent.EventFlowStart:
+		flowMsg := types.NewSystemMessage(fmt.Sprintf("🔀 Flow: %s (%d steps)", ev.FlowName, len(ev.Steps)))
+		m.Messages = append(m.Messages, flowMsg)
+		m.Screen.GetMessageView().MessageGrew()
+		m.activeFlow = ev.FlowName
+
+	case agent.EventFlowStepStart:
+		stepMsg := types.NewSystemMessage(fmt.Sprintf("→ %s is working... (%d/%d)", ev.AgentName, ev.StepIndex+1, ev.TotalSteps))
+		m.Messages = append(m.Messages, stepMsg)
+		m.Screen.GetMessageView().MessageGrew()
+		m.Screen.SetFlowIndicator(fmt.Sprintf("flow: %s [%d/%d] %s",
+			m.activeFlow, ev.StepIndex+1, ev.TotalSteps, ev.AgentName))
+
+	case agent.EventFlowStepEnd:
+		if ev.Error != nil {
+			errMsg := types.NewSystemMessage(fmt.Sprintf("✗ %s failed: %v", ev.AgentName, ev.Error))
+			m.Messages = append(m.Messages, errMsg)
+			m.Screen.GetMessageView().MessageGrew()
+		}
+
+	case agent.EventFlowEnd:
+		m.Screen.SetFlowIndicator("")
+		m.activeFlow = ""
+		if ev.Completed {
+			endMsg := types.NewSystemMessage(fmt.Sprintf("✅ Flow complete (%d steps, %d tokens)", ev.TotalSteps, ev.TotalTokens))
+			m.Messages = append(m.Messages, endMsg)
+		} else {
+			endMsg := types.NewSystemMessage(fmt.Sprintf("⚠ Flow ended after %d steps", ev.TotalSteps))
+			m.Messages = append(m.Messages, endMsg)
+		}
+		m.Screen.GetMessageView().MessageGrew()
+		m.Screen.SetStatusBarState(tui.StatusIdle)
 	}
 }
 
@@ -995,6 +1060,9 @@ func (m *AppModel) handleCommand(text string) (tea.Cmd, bool) {
 	case "compact":
 		return m.handleCompactCommand(), true
 
+	case "flow":
+		return m.handleFlowCommand(parts), true
+
 	case "yolo":
 		return m.handleYoloCommand(), true
 
@@ -1129,6 +1197,64 @@ func (m *AppModel) handleYoloCommand() tea.Cmd {
 		m.Messages = append(m.Messages, yoloMsg)
 		m.Screen.GetMessageView().MessageGrew()
 	}
+
+	return nil
+}
+
+// handleFlowCommand processes the /flow slash command.
+func (m *AppModel) handleFlowCommand(parts []string) tea.Cmd {
+	if m.orchestrator == nil {
+		msg := types.NewSystemMessage("No flows configured. Add agents and flows to your mok.yaml config.")
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	if len(parts) < 2 {
+		// List available flows
+		flows := m.orchestrator.ListFlows()
+		if len(flows) == 0 {
+			msg := types.NewSystemMessage("No flows configured.")
+			m.Messages = append(m.Messages, msg)
+			m.Screen.GetMessageView().MessageGrew()
+			return nil
+		}
+		text := "Available flows:\n"
+		for _, name := range flows {
+			text += fmt.Sprintf("  /flow %s\n", name)
+		}
+		msg := types.NewSystemMessage(text)
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	flowName := parts[1]
+
+	if flowName == "stop" {
+		if m.cancel != nil {
+			m.abortAgent()
+			msg := types.NewSystemMessage("Flow cancelled.")
+			m.Messages = append(m.Messages, msg)
+			m.Screen.GetMessageView().MessageGrew()
+		}
+		return nil
+	}
+
+	if !m.orchestrator.HasFlow(flowName) {
+		msg := types.NewSystemMessage(fmt.Sprintf("Unknown flow: %s. Use /flow to list available flows.", flowName))
+		m.Messages = append(m.Messages, msg)
+		m.Screen.GetMessageView().MessageGrew()
+		return nil
+	}
+
+	// Flow command without a user message: store the flow name,
+	// the user must then type their message and hit Enter.
+	// We show a prompt asking for the message.
+	m.activeFlow = flowName
+	msg := types.NewSystemMessage(fmt.Sprintf("🔀 Flow selected: %s — type your request and press Enter.", flowName))
+	m.Messages = append(m.Messages, msg)
+	m.Screen.GetMessageView().MessageGrew()
 
 	return nil
 }
@@ -1283,10 +1409,16 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 	// Create a fresh event channel for this turn.
 	m.eventChan = make(chan agentEvent, 128)
 
-	// Agent writes events here; a bridge goroutine forwards them to m.eventChan.
-	agentEvents := make(chan agent.Event, 64)
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
+
+	// If a flow is active, run the orchestrator instead of single agent
+	if m.activeFlow != "" && m.orchestrator != nil {
+		return m.runFlow(ctx, text)
+	}
+
+	// Agent writes events here; a bridge goroutine forwards them to m.eventChan.
+	agentEvents := make(chan agent.Event, 64)
 
 	go func() {
 		defer close(agentEvents)
@@ -1299,6 +1431,36 @@ func (m *AppModel) submitMessage(text string) tea.Cmd {
 		for event := range agentEvents {
 			m.eventChan <- agentEvent{Event: event, Done: false}
 		}
+	}()
+
+	return m.readAgentEvent
+}
+
+// runFlow starts the flow orchestrator in a goroutine and bridges its events
+// to the TUI's event channel.
+func (m *AppModel) runFlow(ctx context.Context, userMessage string) tea.Cmd {
+	flowName := m.activeFlow
+
+	// Show flow start message
+	startMsg := types.NewSystemMessage(fmt.Sprintf("🚀 Starting flow: %s", flowName))
+	m.Messages = append(m.Messages, startMsg)
+	m.Screen.GetMessageView().MessageGrew()
+
+	agentEvents := make(chan agent.Event, 128)
+
+	go func() {
+		defer close(agentEvents)
+		m.orchestrator.Run(ctx, flowName, userMessage, agentEvents)
+	}()
+
+	// Bridge: forward each event to bubbletea's channel.
+	go func() {
+		defer close(m.eventChan)
+		for event := range agentEvents {
+			m.eventChan <- agentEvent{Event: event, Done: false}
+		}
+		// Signal turn end after flow finishes
+		m.eventChan <- agentEvent{Event: agent.EventTurnEnd{}, Done: true}
 	}()
 
 	return m.readAgentEvent

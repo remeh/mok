@@ -35,7 +35,8 @@ type StatusBar struct {
 	dotPhase      int // 0..2, cycles to produce ".  " ".. " "..."
 	tickCount     int // raw tick counter; dotPhase advances every dotTickInterval ticks
 	lastUpdate    time.Time
-	yoloMode      bool // when true, show YOLO indicator
+	yoloMode      bool   // when true, show YOLO indicator
+	flowIndicator string // e.g. "flow: implementation [2/5] coder"
 }
 
 const dotTickInterval = 10 // advance dots every 10 ticks (~1s at 100ms tick rate)
@@ -108,6 +109,11 @@ func (s *StatusBar) SetYoloMode(enabled bool) {
 	s.yoloMode = enabled
 }
 
+// SetFlowIndicator sets the flow progress indicator (empty string clears it).
+func (s *StatusBar) SetFlowIndicator(indicator string) {
+	s.flowIndicator = indicator
+}
+
 // Tick advances the dot animation.
 func (s *StatusBar) Tick() {
 	s.tickCount++
@@ -122,8 +128,13 @@ func (s *StatusBar) Render() string {
 		s.width = 80
 	}
 
-	// Left: model name
-	left := s.theme.StatusBar.Render(s.model)
+	// Left: flow indicator or model name
+	var left string
+	if s.flowIndicator != "" {
+		left = s.theme.StatusBarActive.Render(s.flowIndicator)
+	} else {
+		left = s.theme.StatusBar.Render(s.model)
+	}
 
 	// Center: token count / context usage, optionally followed by ↓N hint
 	// when there is content scrolled below the viewport.

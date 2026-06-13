@@ -132,3 +132,42 @@ type EventCompactionError struct {
 }
 
 func (EventCompactionError) eventType() string { return "compaction_error" }
+
+// EventFlowStart is emitted when a flow begins execution.
+type EventFlowStart struct {
+	FlowName  string
+	Steps     []string
+	StepIndex int // 0-based, always 0 at start
+}
+
+func (EventFlowStart) eventType() string { return "flow_start" }
+
+// EventFlowStepStart is emitted when a new agent begins its turn.
+type EventFlowStepStart struct {
+	AgentName  string
+	StepIndex  int // 0-based
+	TotalSteps int
+}
+
+func (EventFlowStepStart) eventType() string { return "flow_step_start" }
+
+// EventFlowStepEnd is emitted when an agent finishes (before handoff).
+type EventFlowStepEnd struct {
+	AgentName string
+	StepIndex int // 0-based
+	Summary   string
+	Error     error
+}
+
+func (EventFlowStepEnd) eventType() string { return "flow_step_end" }
+
+// EventFlowEnd is emitted when the entire flow completes.
+type EventFlowEnd struct {
+	FlowName     string
+	Completed    bool // false if cancelled or failed mid-flow
+	TotalSteps   int
+	TotalTokens  int
+	Error        error
+}
+
+func (EventFlowEnd) eventType() string { return "flow_end" }

@@ -1,6 +1,10 @@
 package app
 
-import "os"
+import (
+	"os"
+
+	"github.com/user/mok/internal/flow"
+)
 
 // Config holds all application configuration.
 type Config struct {
@@ -27,6 +31,11 @@ type Config struct {
 	EnableAutocomplete   bool `yaml:"enable_autocomplete"`    // Enable command autocomplete
 	AutocompleteMaxItems int  `yaml:"autocomplete_max_items"` // Max suggestions to show
 	TabCompletes         bool `yaml:"tab_completes"`          // Enable Tab for completion
+
+	// Multi-agent flow
+	Agents      map[string]flow.AgentDefinition `yaml:"agents"`       // nil = single-agent mode
+	Flows       map[string][]string             `yaml:"flows"`        // nil = no flows (value is ordered agent names)
+	DefaultFlow string                          `yaml:"default_flow"`  // default flow when none specified
 }
 
 // DefaultConfig returns a Config with sensible defaults.

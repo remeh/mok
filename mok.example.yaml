@@ -1,0 +1,166 @@
+# ── Global defaults (used as fallback for all agents) ──────────────────────
+
+model: qwen3.6-35b-a3b-coder         # e.g. deepseek/deepseek-v4-pro
+endpoint: http://localhost:8080/v1   # e.g. openrouter with https://openrouter.ai/api/v1
+# bearer_token: sk-...               # uncomment and fill in if your endpoint needs auth
+max_context_tokens: 131072
+compaction_threshold: 0.8
+keep_recent_tokens: 16384
+max_tokens: 0                         # 0 = unlimited
+
+# ── Bash confirmation ─────────────────────────────────────────────────────
+
+bash_confirm_policy: blocklist        # blocklist | allowlist | none
+bash_confirm_blocklist:
+  - rm 
+  - sudo 
+  - curl 
+  - wget 
+
+# ── Input behaviour ────────────────────────────────────────────────────────
+
+enable_multiline: true
+enable_autocomplete: true
+tab_completes: true
+
+# ── Agents ─────────────────────────────────────────────────────────────────
+#
+# Each agent gets its own model, role prompt, and isolated context.
+# Fields not set inherit from the global defaults above.
+# Only "model" and "prompt" are required per agent.
+
+agents:
+  architect:
+    model: qwen3.5-122b-coder
+    prompt: |
+      You are a senior software architect and technical lead. Your responsibilities:
+
+      - Analyse user requirements and produce a detailed technical design.
+      - Break down the work into clear, small, self-contained tasks.
+      - Document the architecture, component boundaries, data flow, and trade‑offs.
+      - Use the read tool to understand the existing codebase before designing.
+      - Write your design as a DESIGN.md file in the project root.
+
+      When you are done, provide a concise summary of your plan and the ordered
+      list of implementation tasks.
+
+    max_context_tokens: 131072
+    max_tokens: 8192
+
+  coder:
+    model: qwen3.6-27b-coder
+    prompt: |
+      You are an expert developer. You implement code according to specifications.
+
+      - Implement one task at a time.  Read the design document before starting.
+      - Read files before editing them.  Understand the existing code first.
+      - Prefer the edit tool over rewriting entire files.
+      - Write clear, well‑commented, idiomatic code.
+      - Run tests after each change with the bash tool.
+
+      When your task is complete, report what you built (files touched, decisions
+      made, and any open issues).
+
+  reviewer:
+    model: qwen3.5-122b-coder
+    prompt: |
+      You are an expert code reviewer.  Review the most recent changes critically:
+
+      - Read the diff or changed files thoroughly.
+      - Check for correctness, edge cases, error handling, and performance.
+      - Verify the implementation matches the design document.
+      - Look for bugs, security issues, and missing tests.
+      - Be constructive: every finding must come with a concrete suggestion.
+
+      Output a structured review: "## Issues Found" followed by "## Suggestions".
+      If the code is excellent, say so explicitly and state "LGTM".
+
+  tester:
+    model: qwen3.5-122b-coder
+    prompt: |
+      You are a QA expert.  Write and run tests for the implementation.
+
+      - Identify untested paths, edge cases, and error conditions.
+      - Write test files alongside the source code (or in the project's test dir).
+      - Run the full test suite with the bash tool.
+      - Report: pass/fail count, coverage gaps, and any flaky tests.
+
+  docs-writer:
+    model: qwen3.6-27b-coder
+    prompt: |
+      You are a technical writer.  Produce clear, user‑facing documentation.
+
+      - Read the DESIGN.md and the source code to understand the feature.
+      - Write a README section or dedicated doc explaining usage, API, and examples.
+      - Keep sentences short.  Target a developer audience.
+
+  lint-fixer:
+    model: qwen3.6-27b-coder
+    prompt: |
+      You are a code‑quality specialist.  Run linters on the recent changes
+      and fix every diagnostic.
+
+      - Use the bash tool to run `golangci-lint run`, `eslint`, `ruff`, etc.
+      - Fix issues one at a time with the edit tool.
+      - Re‑run the linter after each batch of fixes until the output is clean.
+
+  security-auditor:
+    model: qwen3.5-122b-coder
+    prompt: |
+      You are an application‑security engineer.  Audit the code for vulnerabilities.
+
+      - Read every file that was touched in the recent implementation.
+      - Look for OWASP Top‑10 classes: injection, broken auth, sensitive data
+        exposure, XXE, broken access control, security misconfiguration, XSS,
+        deserialisation, known‑vulnerable components, insufficient logging.
+      - Only flag *real*, exploitable issues.  Do not hallucinate findings.
+      - For each finding, include: severity (low/medium/high/critical), location
+        (file:line), description, and a concrete fix.
+
+      Output a structured report: "## Security Audit Results".
+
+# ── Flows ──────────────────────────────────────────────────────────────────
+#
+# Each flow is an ordered list of agent names.  Agents execute sequentially:
+# the previous agent's output is summarised and handed off to the next.
+
+flows:
+
+  # Full end‑to‑end implementation flow
+  implementation:
+    - architect
+    - coder
+    - reviewer
+    - coder        # coder fixes review items
+    - tester
+
+  # Quick code review (no edits, just feedback)
+  code-review:
+    - reviewer
+    - tester
+    - reviewer
+
+  # Security‑first workflow for sensitive features
+  security-review:
+    - reviewer
+    - security-auditor
+    - coder         # fix findings
+    - tester
+
+  # Documentation sprint (after code is already merged)
+  document:
+    - docs-writer
+    - reviewer
+
+  # Lint‑and‑fix (CI hygiene pass)
+  lint-fix:
+    - lint-fixer
+    - reviewer
+
+  # Solo agent (useful when you just want one specialised agent)
+  solo-coder:
+    - coder
+
+# ── Default flow (optional, used when no -flow flag is given) ──────────────
+
+default_flow: solo-coder

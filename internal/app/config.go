@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/user/mok/internal/flow"
 	"gopkg.in/yaml.v3"
 )
 
@@ -29,6 +30,11 @@ func LoadConfig(flags map[string]string) (*Config, error) {
 
 	// 3. Override with CLI flags (highest precedence)
 	applyFlags(cfg, flags)
+
+	// 4. Validate agent/flow configuration if present
+	if err := cfg.validateAgentsAndFlows(); err != nil {
+		return nil, fmt.Errorf("validating agents/flows: %w", err)
+	}
 
 	return cfg, nil
 }
@@ -249,4 +255,95 @@ func mergeConfig(dst, src *Config) {
 	if src.TabCompletes {
 		dst.TabCompletes = src.TabCompletes
 	}
+	// Merge agent/flow maps (full replacement, not field-level merge)
+	if len(src.Agents) > 0 {
+		dst.Agents = src.Agents
+	}
+	if len(src.Flows) > 0 {
+		dst.Flows = src.Flows
+	}
+	if src.DefaultFlow != "" {
+		dst.DefaultFlow = src.DefaultFlow
+	}
+}
+
+// validateAgentsAndFlows checks agent/flow consistency.
+// Returns nil if no agents are configured (single-agent mode).
+func (c *Config) validateAgentsAndFlows() error {
+	if len(c.Agents) == 0 {
+		return nil // Single-agent mode, nothing to validate
+	}
+
+	// Validate every agent has required fields
+	for name, def := range c.Agents {
+		// Set the name from the map key (not populated by YAML)
+		def.Name = name
+		c.Agents[name] = def
+
+		if def.Model == "" {
+			return fmt.Errorf("agent %q: model is required", name)
+		}
+		if def.Prompt == "" {
+			return fmt.Errorf("agent %q: prompt is required", name)
+		}
+	}
+
+	// Validate every flow references known agents
+	for flowName, steps := range c.Flows {
+		for _, agentName := range steps {
+			if _, ok := c.Agents[agentName]; !ok {
+				return fmt.Errorf("flow %q references unknown agent %q", flowName, agentName)
+			}
+		}
+	}
+
+	// Validate default_flow references a known flow
+	if c.DefaultFlow != "" {
+		if _, ok := c.Flows[c.DefaultFlow]; !ok {
+			return fmt.Errorf("default_flow %q is not a defined flow", c.DefaultFlow)
+		}
+	}
+
+	return nil
+}
+
+// ResolveAgentConfig merges an AgentDefinition with the global Config values.
+// Per-agent fields take precedence; zero/false/empty values fall back to globals.
+func (c *Config) ResolveAgentConfig(name string) (flow.AgentConfig, error) {
+	def, ok := c.Agents[name]
+	if !ok {
+		return flow.AgentConfig{}, fmt.Errorf("unknown agent: %q", name)
+	}
+
+	return flow.AgentConfig{
+		Definition:              def,
+		GlobalModel:             c.Model,
+		GlobalEndpoint:          c.Endpoint,
+		GlobalMaxTokens:         c.MaxTokens,
+		GlobalMaxContextTokens:    c.MaxContextTokens,
+		GlobalCompactionThreshold: c.CompactionThreshold,
+		GlobalKeepRecentTokens:    c.KeepRecentTokens,
+	}, nil
+}
+
+// GetFlowDefinition returns a FlowDefinition for a named flow.
+func (c *Config) GetFlowDefinition(name string) (flow.FlowDefinition, error) {
+	steps, ok := c.Flows[name]
+	if !ok {
+		return flow.FlowDefinition{}, fmt.Errorf("unknown flow: %q", name)
+	}
+	return flow.FlowDefinition{
+		Name:  name,
+		Steps: steps,
+	}, nil
+}
+
+// HasAgents returns true if multi-agent mode is configured.
+func (c *Config) HasAgents() bool {
+	return len(c.Agents) > 0
+}
+
+// HasFlows returns true if flows are configured.
+func (c *Config) HasFlows() bool {
+	return len(c.Flows) > 0
 }

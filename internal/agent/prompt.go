@@ -12,8 +12,9 @@ import (
 
 // PromptConfig holds parameters for building the system prompt.
 type PromptConfig struct {
-	CWD   string
-	Tools *tools.Registry
+	CWD          string
+	Tools        *tools.Registry
+	PromptPrefix string // Agent role prompt (replaces opening line); empty = use default
 }
 
 // BuildSystemPrompt returns a system prompt optimized for local LLMs.
@@ -47,7 +48,13 @@ func BuildSystemPrompt(cfg *PromptConfig) string {
 		}
 	}
 
-	return fmt.Sprintf(`You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files.
+	// Build the opening line: use PromptPrefix if provided, else default
+	opening := cfg.PromptPrefix
+	if opening == "" {
+		opening = "You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files."
+	}
+
+	return fmt.Sprintf(`%s
 
 # Available tools
 
@@ -68,5 +75,5 @@ func BuildSystemPrompt(cfg *PromptConfig) string {
 - Take that time to ask questions or to ask if it's time to make changes, but do not make changes until asked.
 
 Current date: %s
-Working directory: %s%s`, toolsList, date, cwd, contextSection)
+Working directory: %s%s`, opening, toolsList, date, cwd, contextSection)
 }
