@@ -664,6 +664,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 			last := m.Messages[len(m.Messages)-1]
 			if last.Type == types.MsgToolCall {
 				last.ToolArgs = ev.Args
+				last.ToolDisplay = toolDisplayLabel(ev.Name, ev.Args)
 				m.Screen.GetMessageView().MessageGrew()
 			}
 		}
@@ -1141,6 +1142,47 @@ func (m *AppModel) handleDebugCommand(parts []string) tea.Cmd {
 	m.Screen.GetMessageView().MessageGrew()
 
 	return nil
+}
+
+// toolDisplayLabel extracts a short human-readable label from a tool call's
+// JSON arguments for display in the TUI. Returns "" if no recognizable
+// argument is found.
+func toolDisplayLabel(toolName string, argsJSON string) string {
+	if argsJSON == "" {
+		return ""
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &raw); err != nil {
+		return ""
+	}
+
+	switch toolName {
+	case "read", "write", "edit":
+		if path, ok := raw["path"].(string); ok && path != "" {
+			// Show just the basename in the tag, to keep it short.
+			base := filepath.Base(path)
+			if base == "." || base == "/" {
+				base = path
+			}
+			return toolName + " " + base
+		}
+	case "bash":
+		if cmd, ok := raw["command"].(string); ok && cmd != "" {
+			// Show first word + ellipsis if multi-word.
+			parts := strings.Fields(cmd)
+			if len(parts) == 0 {
+				break
+			}
+			label := parts[0]
+			if len(parts) > 1 {
+				label += " …"
+			}
+			return toolName + " " + label
+		}
+	}
+
+	return ""
 }
 
 // handleCompactCommand triggers manual compaction of the conversation history.

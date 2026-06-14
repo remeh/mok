@@ -32,6 +32,7 @@ type Message struct {
 	ThinkingText     string
 	ToolName         string
 	ToolArgs         string
+	ToolDisplay      string // Post-processed display label (e.g. "write /path/file.go")
 	IsError          bool
 	Streaming        bool
 	Collapsed        bool // When true, show Summary instead of Content

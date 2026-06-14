@@ -261,6 +261,9 @@ func (v *MessageView) messageLabelText(msg *types.Message) string {
 	case types.MsgAssistant:
 		return ""
 	case types.MsgToolCall:
+		if msg.ToolDisplay != "" {
+			return "[" + msg.ToolDisplay + "]"
+		}
 		return "[" + msg.ToolName + "]"
 	case types.MsgToolResult:
 		if msg.IsError {
