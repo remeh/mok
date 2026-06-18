@@ -92,6 +92,11 @@ type AppModel struct {
 	pendingConfirmation *PendingConfirmation
 	confirmRespCh       chan<- types.ConfirmationResponse // Channel to send user's confirmation response to the agent
 	confirmRespChRecv   <-chan types.ConfirmationResponse // Receive-only side for the agent
+
+	// Tool call end counter — tracks how many EventToolCallEnd events have
+	// been received in the current turn, used to match against the Nth
+	// MsgToolCall message when multiple tool calls are in one turn.
+	pendingToolCallEnds int
 }
 
 // NewAppModel creates a new AppModel with the given config and optional session path.
@@ -566,6 +571,7 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 	switch ev := event.(type) {
 	case agent.EventTurnStart:
 		m.Screen.SetStatusBarState(tui.StatusProcessing)
+		m.pendingToolCallEnds = 0
 		// Store the turn start time on the last user message
 		if len(m.Messages) > 0 {
 			m.Messages[len(m.Messages)-1].Timestamp = ev.StartTime
@@ -659,19 +665,50 @@ func (m *AppModel) handleAgentEvent(event agent.Event) {
 		}
 
 	case agent.EventToolCallEnd:
-		// Finalize the tool call display
+		// Finalize the tool call display.
+		// EventToolCallEnd events arrive in the same order as the
+		// EventToolCallStart events that created the MsgToolCall
+		// messages.  Use a per-turn counter to match the Nth end
+		// event to the Nth MsgToolCall in the message list,
+		// regardless of interleaved MsgToolResult messages.
 		if len(m.Messages) > 0 {
-			last := m.Messages[len(m.Messages)-1]
-			if last.Type == types.MsgToolCall {
-				last.ToolArgs = ev.Args
-				last.ToolDisplay = toolDisplayLabel(ev.Name, ev.Args)
-				m.Screen.GetMessageView().MessageGrew()
+			n := m.pendingToolCallEnds
+			tcIndex := 0 // index among MsgToolCall messages
+			for i := range m.Messages {
+				if m.Messages[i].Type == types.MsgToolCall {
+					if tcIndex == n {
+						m.Messages[i].ToolArgs = ev.Args
+						m.Messages[i].ToolDisplay = toolDisplayLabel(ev.Name, ev.Args)
+						m.Screen.GetMessageView().MessageGrew()
+						break
+					}
+					tcIndex++
+				}
 			}
+			m.pendingToolCallEnds++
 		}
 
 	case agent.EventToolResult:
 		// Show tool result
 		resultMsg := types.NewToolResult(ev.Name, ev.Result, ev.IsError)
+
+		// Copy the display label from the matching MsgToolCall so the
+		// result line shows the same human-readable tag.
+		// pendingToolCallEnds is the 0-based index of the tool call that
+		// just finished (incremented by EventToolCallEnd before this fires).
+		if n := m.pendingToolCallEnds - 1; n >= 0 {
+			tcIndex := 0
+			for i := range m.Messages {
+				if m.Messages[i].Type == types.MsgToolCall {
+					if tcIndex == n {
+						resultMsg.ToolDisplay = m.Messages[i].ToolDisplay
+						break
+					}
+					tcIndex++
+				}
+			}
+		}
+
 		m.Messages = append(m.Messages, resultMsg)
 		m.Screen.GetMessageView().MessageGrew()
 		m.Screen.SetToolName("")

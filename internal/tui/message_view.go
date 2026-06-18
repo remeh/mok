@@ -207,10 +207,10 @@ func (v *MessageView) totalLineCount() int {
 // state of a message at the current width. When this string is unchanged, the
 // cached rendered lines can be reused.
 func (v *MessageView) computeFingerprint(msg *types.Message) string {
-	return fmt.Sprintf("%s|%d|%t|%t|%t|%t|%s|%s|%s|%s|%s",
+	return fmt.Sprintf("%s|%d|%t|%t|%t|%t|%s|%s|%s|%s|%s|%s",
 		msg.Type, v.width,
 		msg.ThinkingExpanded, msg.Streaming, msg.Collapsed, msg.IsError,
-		msg.ToolName, msg.ToolArgs, msg.Summary,
+		msg.ToolName, msg.ToolArgs, msg.ToolDisplay, msg.Summary,
 		msg.ThinkingText, msg.Content,
 	)
 }
@@ -266,6 +266,9 @@ func (v *MessageView) messageLabelText(msg *types.Message) string {
 		}
 		return "[" + msg.ToolName + "]"
 	case types.MsgToolResult:
+		if msg.ToolDisplay != "" {
+			return "[" + msg.ToolDisplay + "]"
+		}
 		if msg.IsError {
 			return "[" + msg.ToolName + "]"
 		}
@@ -419,7 +422,11 @@ func (v *MessageView) renderMessageLines(msg *types.Message) []string {
 	case types.MsgToolResult:
 		if msg.Collapsed && msg.Summary != "" {
 			// Show collapsed summary with expand hint.
-			tag := v.tagStyle(msg).Render("[" + msg.ToolName + "]")
+			label := msg.ToolName
+			if msg.ToolDisplay != "" {
+				label = msg.ToolDisplay
+			}
+			tag := v.tagStyle(msg).Render("[" + label + "]")
 			rest := v.theme.Dim.Render(" " + msg.Summary + "  (click to expand)")
 			lines = append(lines, "  "+tag+rest)
 			return lines
