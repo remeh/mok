@@ -36,6 +36,9 @@ type Config struct {
 	Agents      map[string]flow.AgentDefinition `yaml:"agents"`       // nil = single-agent mode
 	Flows       map[string][]string             `yaml:"flows"`        // nil = no flows (value is ordered agent names)
 	DefaultFlow string                          `yaml:"default_flow"`  // default flow when none specified
+
+	// Config validation warnings (populated during LoadConfig)
+	ValidationWarnings []string `yaml:"-"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.

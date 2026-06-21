@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/user/mok/internal/flow"
@@ -139,7 +140,7 @@ max_tokens: 4096
 }
 
 // TestValidationMissingAgentReference checks that a flow referencing an
-// unknown agent produces a clear error.
+// unknown agent is filtered out with a warning instead of failing.
 func TestValidationMissingAgentReference(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -161,9 +162,30 @@ flows:
 	os.Chdir(tmpDir)
 	defer os.Chdir(origDir)
 
-	_, err := LoadConfig(nil)
-	if err == nil {
-		t.Fatal("expected error for unknown agent reference, got nil")
+	cfg, err := LoadConfig(nil)
+	if err != nil {
+		t.Fatalf("LoadConfig should not fail: %v", err)
+	}
+
+	// The invalid flow should be filtered out
+	if len(cfg.Flows) != 0 {
+		t.Errorf("Expected no flows (invalid-flow filtered out), got %d flows", len(cfg.Flows))
+	}
+
+	// Should have a warning about the unknown agent
+	if len(cfg.ValidationWarnings) == 0 {
+		t.Error("Expected validation warning for unknown agent reference")
+	} else {
+		foundWarning := false
+		for _, w := range cfg.ValidationWarnings {
+			if w != "" && strings.Contains(w, "flow") && strings.Contains(w, "unknown agent") {
+				foundWarning = true
+				break
+			}
+		}
+		if !foundWarning {
+			t.Errorf("Expected warning about 'implementation' flow and unknown agent 'senior', got: %v", cfg.ValidationWarnings)
+		}
 	}
 }
 
@@ -218,7 +240,7 @@ agents:
 }
 
 // TestValidationBadDefaultFlow verifies that default_flow referencing
-// an unknown flow is rejected.
+// an unknown flow is cleared with a warning instead of failing.
 func TestValidationBadDefaultFlow(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -239,9 +261,30 @@ default_flow: "nonexistent"
 	os.Chdir(tmpDir)
 	defer os.Chdir(origDir)
 
-	_, err := LoadConfig(nil)
-	if err == nil {
-		t.Fatal("expected error for bad default_flow, got nil")
+	cfg, err := LoadConfig(nil)
+	if err != nil {
+		t.Fatalf("LoadConfig should not fail: %v", err)
+	}
+
+	// Default flow should be cleared
+	if cfg.DefaultFlow != "" {
+		t.Errorf("Expected default_flow to be cleared, got %q", cfg.DefaultFlow)
+	}
+
+	// Should have a warning
+	if len(cfg.ValidationWarnings) == 0 {
+		t.Error("Expected warning about invalid default_flow")
+	} else {
+		foundWarning := false
+		for _, w := range cfg.ValidationWarnings {
+			if w != "" && w[:13] == "default_flow " {
+				foundWarning = true
+				break
+			}
+		}
+		if !foundWarning {
+			t.Errorf("Expected warning about invalid default_flow, got: %v", cfg.ValidationWarnings)
+		}
 	}
 }
 

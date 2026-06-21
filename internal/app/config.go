@@ -32,6 +32,7 @@ func LoadConfig(flags map[string]string) (*Config, error) {
 	applyFlags(cfg, flags)
 
 	// 4. Validate agent/flow configuration if present
+	// Note: This may add warnings to cfg.ValidationWarnings but doesn't fail
 	if err := cfg.validateAgentsAndFlows(); err != nil {
 		return nil, fmt.Errorf("validating agents/flows: %w", err)
 	}
@@ -269,6 +270,7 @@ func mergeConfig(dst, src *Config) {
 
 // validateAgentsAndFlows checks agent/flow consistency.
 // Returns nil if no agents are configured (single-agent mode).
+// Invalid flows are filtered out and warnings are added to cfg.ValidationWarnings.
 func (c *Config) validateAgentsAndFlows() error {
 	if len(c.Agents) == 0 {
 		return nil // Single-agent mode, nothing to validate
@@ -289,18 +291,33 @@ func (c *Config) validateAgentsAndFlows() error {
 	}
 
 	// Validate every flow references known agents
+	// Filter out invalid flows instead of failing
+	validFlows := make(map[string][]string)
 	for flowName, steps := range c.Flows {
+		valid := true
+		var invalidAgent string
 		for _, agentName := range steps {
 			if _, ok := c.Agents[agentName]; !ok {
-				return fmt.Errorf("flow %q references unknown agent %q", flowName, agentName)
+				valid = false
+				invalidAgent = agentName
+				break
 			}
 		}
+		if valid {
+			validFlows[flowName] = steps
+		} else {
+			c.ValidationWarnings = append(c.ValidationWarnings,
+				fmt.Sprintf("flow %q skipped: references unknown agent %q", flowName, invalidAgent))
+		}
 	}
+	c.Flows = validFlows
 
 	// Validate default_flow references a known flow
 	if c.DefaultFlow != "" {
 		if _, ok := c.Flows[c.DefaultFlow]; !ok {
-			return fmt.Errorf("default_flow %q is not a defined flow", c.DefaultFlow)
+			c.ValidationWarnings = append(c.ValidationWarnings,
+				fmt.Sprintf("default_flow %q is not a defined flow, clearing", c.DefaultFlow))
+			c.DefaultFlow = ""
 		}
 	}
 

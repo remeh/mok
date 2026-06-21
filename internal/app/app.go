@@ -244,6 +244,15 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 		orchestrator:    orch,
 	}
 
+	// Add validation warnings as system messages
+	for _, warning := range cfg.ValidationWarnings {
+		warnMsg := types.NewSystemMessage("⚠ Config warning: " + warning)
+		model.Messages = append(model.Messages, warnMsg)
+	}
+	if len(cfg.ValidationWarnings) > 0 {
+		screen.GetMessageView().MessageGrew()
+	}
+
 	// If restoring session, load it
 	if sessionPath != "" {
 		sess, err := session.LoadSession(sessionPath)
