@@ -59,11 +59,24 @@ func main() {
 
 	cfg, err := app.LoadConfig(flags)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: config error: %v\n", err)
-		cfg = app.DefaultConfig()
+		// Store the error on the config so the TUI can display it.
+		// Fall back to defaults so the app still starts.
+		defaultCfg := app.DefaultConfig()
+		// Preserve any config load error that was set during LoadConfig
+		if cfg != nil && cfg.ConfigLoadError != "" {
+			defaultCfg.ConfigLoadError = cfg.ConfigLoadError
+		}
+		cfg = defaultCfg
 	}
 
 	if *prompt != "" {
+		// Display config load errors and warnings (before running prompt)
+		if cfg.ConfigLoadError != "" {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", cfg.ConfigLoadError)
+		}
+		for _, warning := range cfg.ValidationWarnings {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+		}
 		if err := runPrompt(cfg, *prompt, *timeout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)

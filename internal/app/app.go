@@ -244,12 +244,20 @@ func NewAppModel(cfg *Config, sessionPath string) (*AppModel, error) {
 		orchestrator:    orch,
 	}
 
-	// Add validation warnings as system messages
+	// Add config load error as a system error message (if any)
+	if cfg.ConfigLoadError != "" {
+		errMsg := types.NewSystemMessage("⚠ Config error: " + cfg.ConfigLoadError)
+		errMsg.IsError = true
+		model.Messages = append(model.Messages, errMsg)
+	}
+
+	// Add validation warnings as system error messages (they indicate config problems)
 	for _, warning := range cfg.ValidationWarnings {
 		warnMsg := types.NewSystemMessage("⚠ Config warning: " + warning)
+		warnMsg.IsError = true
 		model.Messages = append(model.Messages, warnMsg)
 	}
-	if len(cfg.ValidationWarnings) > 0 {
+	if cfg.ConfigLoadError != "" || len(cfg.ValidationWarnings) > 0 {
 		screen.GetMessageView().MessageGrew()
 	}
 

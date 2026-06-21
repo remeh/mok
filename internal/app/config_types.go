@@ -39,6 +39,10 @@ type Config struct {
 
 	// Config validation warnings (populated during LoadConfig)
 	ValidationWarnings []string `yaml:"-"`
+
+	// ConfigLoadError is set when the config file could not be fully parsed
+	// (e.g., unknown fields, parse errors). It is displayed in the TUI.
+	ConfigLoadError string `yaml:"-"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.

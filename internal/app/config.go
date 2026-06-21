@@ -19,7 +19,16 @@ func LoadConfig(flags map[string]string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	// 1. Load from YAML file (search known locations)
-	if fileCfg, err := loadFromFile(); err == nil {
+	fileCfg, fileErr := loadFromFile()
+	if fileErr != nil {
+		// Store the error so it can be displayed in the TUI
+		// Only store if it's not just "no config file found"
+		if fileErr.Error() != "no config file found" {
+			cfg.ConfigLoadError = fileErr.Error()
+			// Return the error so main.go knows there was a config problem
+			return cfg, fileErr
+		}
+	} else if fileCfg != nil {
 		mergeConfig(cfg, fileCfg)
 	}
 
@@ -63,7 +72,9 @@ func loadFromFile() (*Config, error) {
 		}
 
 		var cfg Config
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
+		dec := yaml.NewDecoder(strings.NewReader(string(data)))
+		dec.KnownFields(true) // Error on unknown fields
+		if err := dec.Decode(&cfg); err != nil {
 			return nil, fmt.Errorf("parsing config %s: %w", path, err)
 		}
 		return &cfg, nil

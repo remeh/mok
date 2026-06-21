@@ -48,7 +48,7 @@ func DefaultTheme() Theme {
 		DiffDel:             lipgloss.NewStyle().Foreground(lipgloss.Color("160")),
 		DiffHeader:          lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true),
 		DiffContext:         lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
-		Error:               lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true),
+		Error:               lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).PaddingLeft(2),
 		StatusBar:           lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("144")),
 		StatusBarActive:     lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("226")).Bold(true),
 		StatusBarIdle:       lipgloss.NewStyle().Background(lipgloss.Color("235")).Foreground(lipgloss.Color("65")),

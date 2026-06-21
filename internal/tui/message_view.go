@@ -284,6 +284,9 @@ func (v *MessageView) messageStyle(msg *types.Message) lipgloss.Style {
 	case types.MsgUser:
 		return v.theme.User
 	case types.MsgSystem:
+		if msg.IsError {
+			return v.theme.Error
+		}
 		return v.theme.System
 	case types.MsgAssistant:
 		return v.theme.Assistant
